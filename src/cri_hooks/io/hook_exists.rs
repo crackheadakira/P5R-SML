@@ -12,8 +12,13 @@ static_detour! {
 type FnCriIoExists = unsafe extern "system" fn(PSTR, *mut INT) -> HANDLE;
 
 fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
-    debug_print("[HOOK] io_exists");
-    unsafe { Cri_Io_Exists.call(string_ptr, result) }
+    let response_handle = unsafe { Cri_Io_Exists.call(string_ptr, result) };
+
+    debug_print(&format!(
+        "[HOOK] io_exists, string_ptr: {string_ptr:?}, result: {result:?}"
+    ));
+
+    response_handle
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {

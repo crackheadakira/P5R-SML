@@ -1,20 +1,18 @@
+use crate::bindings::BinderCollection;
+use crate::utils::logging::{debug_print, error_message_box};
+use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
 use once_cell::sync::Lazy;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use winapi::shared::minwindef::HINSTANCE;
+use winapi::shared::minwindef::{BOOL, DWORD, LPVOID};
 use winapi::um::processthreadsapi::GetCurrentProcessId;
 use winapi::um::winnt::DLL_PROCESS_ATTACH;
 
 mod bindings;
 mod cri_hooks;
 mod utils;
-
-use crate::bindings::BinderCollection;
-use crate::utils::logging::{debug_print, error_message_box};
-use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
-
-use winapi::shared::minwindef::{BOOL, DWORD, LPVOID};
 
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
     Lazy::new(|| Mutex::new(BinderCollection::new()));
@@ -57,11 +55,16 @@ pub unsafe extern "system" fn DllMain(
 pub struct CpkBinding {
     alloc: RawAllocator,
     pub bind_id: u32,
+    pub is_bound: bool,
 }
 
 impl CpkBinding {
-    pub fn new(alloc: RawAllocator, bind_id: u32) -> Self {
-        Self { alloc, bind_id }
+    pub fn new(alloc: RawAllocator, bind_id: u32, is_bound: bool) -> Self {
+        Self {
+            alloc,
+            bind_id,
+            is_bound,
+        }
     }
 
     pub fn work_mem_ptr(&self) -> SafeHandle {
@@ -102,4 +105,12 @@ fn paths_to_cstring(paths: &[PathBuf]) -> Result<CString, std::ffi::NulError> {
         .join("\n");
 
     CString::new(joined)
+}
+
+pub unsafe fn pstr_to_string(pstr: *const i8) -> String {
+    if pstr.is_null() {
+        return String::new();
+    }
+    let cstr = unsafe { CStr::from_ptr(pstr) };
+    cstr.to_string_lossy().into_owned()
 }

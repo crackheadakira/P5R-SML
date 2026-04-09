@@ -1,5 +1,3 @@
-use winapi::shared::minwindef::DWORD;
-
 use crate::{
     CpkBinding,
     utils::{SafeHandle, logging::debug_print},
@@ -10,13 +8,16 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use winapi::shared::minwindef::DWORD;
 
 pub struct ModFile {
-    pub file_path: PathBuf,
     pub relative_path: PathBuf,
     pub absolute_path: PathBuf,
     pub handle: Option<SafeHandle>,
+    pub work_handle: Option<SafeHandle>,
+    pub work_size: Option<i32>,
     pub binder_id: DWORD,
+    pub is_bound: bool,
 }
 
 pub struct BinderCollection {
@@ -64,8 +65,19 @@ impl BinderCollection {
     }
 
     pub fn normalize_path(path: &Path) -> PathBuf {
-        let s = path.to_string_lossy().replace('\\', "/");
+        let mut s = path.to_string_lossy().replace('\\', "/").to_lowercase();
+        if s.starts_with('/') {
+            s.remove(0);
+        }
         PathBuf::from(s)
+    }
+
+    pub fn sanitize_cri_path(path: &str) -> String {
+        let mut s = path.replace('\\', "/").to_lowercase();
+        if s.starts_with('/') {
+            s.remove(0);
+        }
+        s
     }
 
     pub fn normalized_path_from_string(path: &str) -> PathBuf {
@@ -110,43 +122,30 @@ impl BinderCollection {
                 if entry_path.is_file() {
                     if let Ok(rel_path) = entry_path.strip_prefix(base_path) {
                         let mut components = rel_path.components();
-
                         components.next();
 
                         let stripped_rel_path = components.as_path();
 
-                        if let Some(parent_dir) = stripped_rel_path.parent() {
-                            let mod_file = ModFile {
-                                file_path: Self::normalize_path(stripped_rel_path),
-                                relative_path: Self::normalize_path(stripped_rel_path),
-                                absolute_path: Self::normalize_path(&entry_path),
-                                handle: None,
-                                binder_id: 0,
-                            };
+                        let mod_file = ModFile {
+                            relative_path: Self::normalize_path(stripped_rel_path),
+                            absolute_path: Self::normalize_path(&entry_path),
+                            handle: None,
+                            binder_id: 0,
+                            is_bound: false,
+                            work_handle: None,
+                            work_size: None,
+                        };
 
-                            debug_print(&format!(
-                                "[MOD LOADER] Added mod folder: {} (from file: {})",
-                                mod_file.relative_path.display(),
-                                mod_file.absolute_path.display()
-                            ));
+                        debug_print(&format!(
+                            "[MOD LOADER] Added mod folder: {} (from file: {})",
+                            mod_file.relative_path.display(),
+                            mod_file.absolute_path.display()
+                        ));
 
-                            self.mod_files.insert(
-                                Self::normalize_path(parent_dir),
-                                Arc::new(Mutex::new(mod_file)),
-                            );
-                        } else {
-                            let mod_file = ModFile {
-                                file_path: Self::normalize_path(stripped_rel_path),
-                                relative_path: Self::normalize_path(stripped_rel_path),
-                                absolute_path: Self::normalize_path(&entry_path),
-                                handle: None,
-                                binder_id: 0,
-                            };
-                            self.mod_files.insert(
-                                Self::normalize_path(stripped_rel_path),
-                                Arc::new(Mutex::new(mod_file)),
-                            );
-                        }
+                        self.mod_files.insert(
+                            Self::normalize_path(stripped_rel_path),
+                            Arc::new(Mutex::new(mod_file)),
+                        );
                     }
                 } else if entry_path.is_dir() {
                     self.read_files_recursive(&entry_path, base_path);

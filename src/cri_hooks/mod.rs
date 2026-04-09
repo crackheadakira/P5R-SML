@@ -31,7 +31,7 @@ macro_rules! hook {
 
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum CriError {
+pub enum CriStatus {
     /// Succeeded.
     Success = 0,
 
@@ -53,27 +53,27 @@ pub enum CriError {
     /// Library not initialized.
     LibraryNotInitialized = -6,
 
-    /// Invalid INT was passed as CriError
+    /// Invalid INT was passed as CriStatus
     Unknown = -7,
 }
 
-impl From<INT> for CriError {
+impl From<INT> for CriStatus {
     fn from(value: INT) -> Self {
         match value {
-            0 => CriError::Success,
-            -1 => CriError::Failure,
-            -2 => CriError::InvalidParameter,
-            -3 => CriError::FailedToAllocateMemory,
-            -4 => CriError::UnsafeFunctionCall,
-            -5 => CriError::FunctionNotImplemented,
-            -6 => CriError::LibraryNotInitialized,
-            _ => CriError::Unknown,
+            0 => CriStatus::Success,
+            -1 => CriStatus::Failure,
+            -2 => CriStatus::InvalidParameter,
+            -3 => CriStatus::FailedToAllocateMemory,
+            -4 => CriStatus::UnsafeFunctionCall,
+            -5 => CriStatus::FunctionNotImplemented,
+            -6 => CriStatus::LibraryNotInitialized,
+            _ => CriStatus::Unknown,
         }
     }
 }
 
-impl From<CriError> for INT {
-    fn from(err: CriError) -> Self {
+impl From<CriStatus> for INT {
+    fn from(err: CriStatus) -> Self {
         err as INT
     }
 }

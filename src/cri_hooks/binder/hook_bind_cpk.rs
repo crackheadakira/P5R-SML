@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use retour::static_detour;
 use winapi::shared::{
@@ -8,7 +8,7 @@ use winapi::shared::{
 
 use crate::{
     BINDER_COLLECTION, CpkBinding,
-    cri_hooks::CriError,
+    cri_hooks::CriStatus,
     hook, paths_to_cstring,
     utils::{RawAllocator, SafeHandle, logging::debug_print},
 };
@@ -16,11 +16,11 @@ use crate::{
 const CRI_BINDER_BIND_CPK_ADDR: usize = 0x140460954;
 
 static_detour! {
-    static Cri_Binder_Bind_Cpk: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    static Cri_Binder_Bind_Cpk: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
 }
 
 type FnCriBinderBindCpk =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
 
 pub fn hook_impl(
     binder_handle: HANDLE,
@@ -29,10 +29,27 @@ pub fn hook_impl(
     work: HANDLE,
     work_size: INT,
     binder_id: *mut DWORD,
-) -> CriError {
-    debug_print("[HOOK] bind_cpk");
+) -> CriStatus {
+    debug_print(&format!(
+        "[HOOK] bind_cpk, binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {path:?}, work: {work:?}, work_size: {work_size}"
+    ));
 
-    unsafe {
+    let should_bind = {
+        let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+        binder_collection
+            .binder_handles
+            .insert(SafeHandle(binder_handle))
+    };
+
+    if should_bind {
+        debug_print(&format!(
+            "[HOOK] Setting up binds for handle {binder_handle:?}"
+        ));
+
+        custom_bind_folder(binder_handle, i32::MAX);
+    }
+
+    let status = unsafe {
         Cri_Binder_Bind_Cpk.call(
             binder_handle,
             src_binder_handle,
@@ -41,26 +58,32 @@ pub fn hook_impl(
             work_size,
             binder_id,
         )
-    }
+    };
+
+    status
 }
 
 // https://github.com/Sewer56/CriFs.V2.Hook.ReloadedII/blob/8a20e34d7a4a1da1a12ede432a7494040d80f960/CriFs.V2.Hook/Hooks/CpkBinder.cs#L219
 fn custom_bind_folder(binder_handle: HANDLE, priority: i32) -> u32 {
     let mut size: INT = 0;
-    let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+    debug_print(&format!(
+        "[HOOK BIND FOLDER] Binding mod files, binder_handle: {binder_handle:?}, priority: {priority}"
+    ));
 
-    debug_print("[HOOK BIND FOLDER] Binding mod files");
+    let paths_vec: Vec<PathBuf> = {
+        let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
 
-    let paths_vec: Vec<PathBuf> = binder_collection
-        .mod_files
-        .values()
-        .filter_map(|mod_file_arc| {
-            mod_file_arc
-                .lock()
-                .ok()
-                .map(|mod_file| mod_file.file_path.clone())
-        })
-        .collect();
+        binder_collection
+            .mod_files
+            .values()
+            .filter_map(|mod_file_arc| {
+                mod_file_arc
+                    .lock()
+                    .ok()
+                    .map(|mod_file| mod_file.absolute_path.clone())
+            })
+            .collect()
+    };
 
     let file_list =
         paths_to_cstring(&paths_vec).expect("Error converting mod file list into CString");
@@ -71,7 +94,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) -> u32 {
         &mut size,
     );
 
-    if err != CriError::Success {
+    if err != CriStatus::Success {
         debug_print("[HOOK BIND FOLDER] Could not get get size for bind mod files");
         return 0;
     }
@@ -90,7 +113,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) -> u32 {
             &mut binder_id,
         );
 
-        if err != CriError::Success {
+        if err != CriStatus::Success {
             debug_print(&format!(
                 "[HOOK BIND FOLDER] Binding files failed with {err:?}"
             ));
@@ -100,62 +123,72 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) -> u32 {
         };
 
         debug_print(&format!(
-            "[HOOK BIND FOLDER] Binder id: {binder_id}, handle: {binder_handle:?}"
+            "[HOOK BIND FOLDER] Bound files with id: {binder_id}, handle: {binder_handle:?}"
         ));
 
-        // keep looping until finished
-        drop(binder_collection);
-        let mut status: INT = 0;
-        loop {
-            super::hook_get_status::hook_impl(binder_id, &mut status);
+        if wait_for_bind_complete(binder_id).is_some() {
+            super::hook_set_priority::hook_impl(binder_id, priority);
+            debug_print(&format!(
+                "[HOOK BIND FOLDER] Took {}ms, bound files: {paths_vec:?}",
+                start.elapsed().as_millis()
+            ));
 
-            match status {
-                2 => {
-                    // complete
-                    super::hook_set_priority::hook_impl(binder_id, priority);
-                    debug_print(&format!(
-                        "[HOOK BIND FOLDER] Took {}ms, bound files: {paths_vec:?}",
-                        start.elapsed().as_millis()
-                    ));
+            let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
 
-                    let mut binder_collection =
-                        BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+            let paths_set: HashSet<_> = paths_vec.into_iter().collect();
+            for mod_file_arc in binder_collection.mod_files.values() {
+                if let Ok(mut mod_file) = mod_file_arc.lock() {
+                    if paths_set.contains(&mod_file.absolute_path) {
+                        mod_file.binder_id = binder_id;
+                        mod_file.handle = Some(SafeHandle(binder_handle));
+                        mod_file.is_bound = true;
+                        mod_file.work_size = Some(size);
+                        mod_file.work_handle = Some(alloc.as_ptr());
 
-                    for mod_file_arc in binder_collection.mod_files.values() {
-                        if let Ok(mut mod_file) = mod_file_arc.lock() {
-                            if paths_vec.contains(&mod_file.file_path) {
-                                mod_file.binder_id = binder_id;
-                                mod_file.handle = Some(SafeHandle(binder_handle));
-                            }
-                        } else {
-                            debug_print(
-                                "[HOOK] Failed to lock mod_file mutex for updating binder_id/handle",
-                            );
-                        }
+                        debug_print(&format!(
+                            "[HOOK] Bound mod file: {}\n  binder_id: {}\n  work_size: {}\n  work_handle: {:?}",
+                            mod_file.absolute_path.display(),
+                            binder_id,
+                            size,
+                            alloc.as_ptr().0
+                        ));
                     }
-
-                    let new_binding = CpkBinding::new(alloc, binder_id);
-                    binder_collection.bindings.push(new_binding);
-
-                    drop(binder_collection);
-
-                    return binder_id;
+                } else {
+                    debug_print(
+                        "[HOOK] Failed to lock mod_file mutex for updating binder_id/handle",
+                    );
                 }
-                6 => {
-                    // error
-                    debug_print("[HOOK BIND FOLDER] Binding failed");
-
-                    super::hook_unbind::hook_impl(binder_id);
-                    alloc.dispose();
-
-                    return 0;
-                }
-                _ => (),
             }
+
+            let new_binding = CpkBinding::new(alloc, binder_id, true);
+            binder_collection.bindings.push(new_binding);
+
+            drop(binder_collection);
+
+            return binder_id;
+        } else {
+            debug_print("[HOOK BIND FOLDER] Binding failed");
+
+            super::hook_unbind::hook_impl(binder_id);
+            alloc.dispose();
+
+            return 0;
         }
     }
 
     0
+}
+
+fn wait_for_bind_complete(binder_id: DWORD) -> Option<()> {
+    let mut status = 0;
+    loop {
+        super::hook_get_status::hook_impl(binder_id, &mut status);
+        match status {
+            2 => return Some(()), // completed
+            6 => return None,     // failed
+            _ => continue,
+        }
+    }
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {

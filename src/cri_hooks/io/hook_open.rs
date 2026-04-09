@@ -1,7 +1,7 @@
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{hook, utils::logging::debug_print};
+use crate::{hook, pstr_to_string, utils::logging::debug_print};
 
 const CRI_IO_OPEN_ADDR: usize = 0x14047357c;
 
@@ -17,7 +17,10 @@ pub fn hook_impl(
     desired_access: INT,
     result: *mut HANDLE,
 ) -> HANDLE {
-    debug_print("[HOOK] io_open");
+    debug_print(&format!(
+        "[HOOK] io_open, string_ptr_value {}, file_creation_type: {file_creation_type}, desired_access, {desired_access}",
+        unsafe { pstr_to_string(string_ptr) }
+    ));
     unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) }
 }
 

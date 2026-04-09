@@ -4,16 +4,16 @@ use winapi::shared::{
     ntdef::{HANDLE, INT, PSTR},
 };
 
-use crate::{cri_hooks::CriError, hook, utils::logging::debug_print};
+use crate::{cri_hooks::CriStatus, hook, utils::logging::debug_print};
 
 const CRI_BINDER_BIND_FILES_ADDR: usize = 0x140460b98;
 
 static_detour! {
-    static Cri_Binder_Bind_Files: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    static Cri_Binder_Bind_Files: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
 }
 
 type FnCriBinderBindFiles =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
 
 pub fn hook_impl(
     binder_handle: HANDLE,
@@ -22,7 +22,7 @@ pub fn hook_impl(
     work: HANDLE,
     work_size: INT,
     binder_id: *mut DWORD,
-) -> CriError {
+) -> CriStatus {
     debug_print("[HOOK] bind_files");
 
     unsafe {
