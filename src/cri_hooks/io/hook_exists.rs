@@ -1,7 +1,7 @@
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{hook, utils::logging::debug_print};
+use crate::{hook, pstr_to_string, utils::logging::debug_print};
 
 const CRI_IO_EXISTS_ADDR: usize = 0x140473384;
 
@@ -15,7 +15,8 @@ fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
     let response_handle = unsafe { Cri_Io_Exists.call(string_ptr, result) };
 
     debug_print(&format!(
-        "[HOOK] io_exists, string_ptr: {string_ptr:?}, result: {result:?}"
+        "[CriIoExists] string_ptr: {}, result: {result:?}",
+        unsafe { pstr_to_string(string_ptr) }
     ));
 
     response_handle

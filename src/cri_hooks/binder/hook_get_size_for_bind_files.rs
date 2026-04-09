@@ -1,4 +1,4 @@
-use crate::{cri_hooks::CriStatus, hook, utils::logging::debug_print};
+use crate::{cri_hooks::CriStatus, hook, pstr_to_string, utils::logging::debug_print};
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
@@ -16,7 +16,9 @@ pub fn hook_impl(src_binder_handle: HANDLE, path: PSTR, work_size: *mut INT) -> 
         unsafe { Cri_Binder_Get_Size_For_Bind_Files.call(src_binder_handle, path, work_size) };
 
     debug_print(&format!(
-        "[HOOK] get_size_for_bind_files, path: {path:?}, work_size: {work_size:?}, cri_status: {status:?}"
+        "[CriBinderGetSizeForBindFiles] path: {}, work_size: {}, cri_status: {status:?}",
+        unsafe { pstr_to_string(path) },
+        unsafe { *work_size }
     ));
 
     status

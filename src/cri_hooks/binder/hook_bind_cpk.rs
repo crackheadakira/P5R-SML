@@ -9,7 +9,7 @@ use winapi::shared::{
 use crate::{
     BINDER_COLLECTION, CpkBinding,
     cri_hooks::CriStatus,
-    hook, paths_to_cstring,
+    hook, paths_to_cstring, pstr_to_string,
     utils::{RawAllocator, SafeHandle, logging::debug_print},
 };
 
@@ -30,25 +30,6 @@ pub fn hook_impl(
     work_size: INT,
     binder_id: *mut DWORD,
 ) -> CriStatus {
-    debug_print(&format!(
-        "[HOOK] bind_cpk, binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {path:?}, work: {work:?}, work_size: {work_size}"
-    ));
-
-    let should_bind = {
-        let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
-        binder_collection
-            .binder_handles
-            .insert(SafeHandle(binder_handle))
-    };
-
-    if should_bind {
-        debug_print(&format!(
-            "[HOOK] Setting up binds for handle {binder_handle:?}"
-        ));
-
-        custom_bind_folder(binder_handle, i32::MAX);
-    }
-
     let status = unsafe {
         Cri_Binder_Bind_Cpk.call(
             binder_handle,
@@ -59,6 +40,12 @@ pub fn hook_impl(
             binder_id,
         )
     };
+
+    debug_print(&format!(
+        "[CriBinderBindCpk] binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {}, work: {work:?}, work_size: {work_size}, binder_id: {}",
+        unsafe { pstr_to_string(path) },
+        unsafe { *binder_id }
+    ));
 
     status
 }

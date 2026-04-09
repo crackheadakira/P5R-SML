@@ -17,11 +17,15 @@ pub fn hook_impl(
     desired_access: INT,
     result: *mut HANDLE,
 ) -> HANDLE {
+    let status =
+        unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) };
+
     debug_print(&format!(
-        "[HOOK] io_open, string_ptr_value {}, file_creation_type: {file_creation_type}, desired_access, {desired_access}",
+        "[CriIoOpen] string_ptr_value {}, file_creation_type: {file_creation_type}, desired_access, {desired_access}, result: {result:?}",
         unsafe { pstr_to_string(string_ptr) }
     ));
-    unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) }
+
+    status
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {

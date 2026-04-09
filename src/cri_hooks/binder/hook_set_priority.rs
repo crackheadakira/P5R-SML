@@ -11,7 +11,9 @@ static_detour! {
 type FnCriBinderSetPriority = unsafe extern "system" fn(DWORD, INT) -> CriStatus;
 
 pub fn hook_impl(binder_id: DWORD, priority: INT) -> CriStatus {
-    debug_print("[HOOK] set_priority called");
+    debug_print(&format!(
+        "[CriBinderSetPriority] binder_id: {binder_id}, priority: {priority}"
+    ));
     unsafe { Cri_Binder_Set_Priority.call(binder_id, priority) }
 }
 

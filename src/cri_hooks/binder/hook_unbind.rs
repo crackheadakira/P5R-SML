@@ -12,27 +12,7 @@ static_detour! {
 type FnCriBinderUnbind = unsafe extern "system" fn(DWORD) -> CriStatus;
 
 pub fn hook_impl(binder_id: DWORD) -> CriStatus {
-    let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
-    for mod_file_arc in binder_collection.mod_files.values() {
-        if let Ok(mut mod_file) = mod_file_arc.lock() {
-            if mod_file.binder_id == binder_id {
-                mod_file.is_bound = false; // mark unbound
-                debug_print(&format!(
-                    "[HOOK] Unbound mod file: {}",
-                    mod_file.relative_path.display()
-                ));
-            }
-        }
-    }
-
-    if let Some(pos) = binder_collection
-        .bindings
-        .iter()
-        .position(|b| b.bind_id == binder_id)
-    {
-        binder_collection.bindings.remove(pos);
-        debug_print("[HOOK] Removed CpkBinding from bindings list");
-    }
+    debug_print(&format!("[CriBinderUnbind] binder_id: {binder_id:?}"));
 
     unsafe { Cri_Binder_Unbind.call(binder_id) }
 }

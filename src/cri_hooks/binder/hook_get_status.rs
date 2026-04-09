@@ -63,33 +63,12 @@ impl fmt::Display for CriBinderStatus {
 }
 
 pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriStatus {
-    // let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
-
     let res = unsafe { Cri_Binder_Get_Status.call(binder_id, status) };
 
     debug_print(&format!(
-        "[HOOK] get_status, binder_id {binder_id:?}, status {}, call_result: {res:?}",
+        "[CriBinderGetStatus] binder_id {binder_id:?}, status {}, call_result: {res:?}",
         unsafe { *status }
     ));
-
-    /*if let Some(binding) = binder_collection
-        .bindings
-        .iter()
-        .find(|b| b.bind_id == binder_id)
-    {
-        let status_value = unsafe { *status };
-        unsafe {
-            *status = if binding.is_bound {
-                CriBinderStatus::Complete.into()
-            } else {
-                CriBinderStatus::Analyze.into() // or some appropriate intermediate status
-            };
-        }
-        debug_print(&format!(
-            "[HOOK] Overriding get_status for modded binder_id {binder_id} with {}",
-            CriBinderStatus::from(status_value)
-        ));
-    };*/
 
     res
 }

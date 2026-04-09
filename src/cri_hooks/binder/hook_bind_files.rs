@@ -4,7 +4,7 @@ use winapi::shared::{
     ntdef::{HANDLE, INT, PSTR},
 };
 
-use crate::{cri_hooks::CriStatus, hook, utils::logging::debug_print};
+use crate::{cri_hooks::CriStatus, hook, pstr_to_string, utils::logging::debug_print};
 
 const CRI_BINDER_BIND_FILES_ADDR: usize = 0x140460b98;
 
@@ -23,9 +23,7 @@ pub fn hook_impl(
     work_size: INT,
     binder_id: *mut DWORD,
 ) -> CriStatus {
-    debug_print("[HOOK] bind_files");
-
-    unsafe {
+    let res = unsafe {
         Cri_Binder_Bind_Files.call(
             binder_handle,
             src_binder_handle,
@@ -34,7 +32,15 @@ pub fn hook_impl(
             work_size,
             binder_id,
         )
-    }
+    };
+
+    debug_print(&format!(
+        "[CriBinderBindFiles] binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {}, work: {work:?}, work_size: {work_size}, binder_id: {}",
+        unsafe { pstr_to_string(path) },
+        unsafe { *binder_id }
+    ));
+
+    res
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
