@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{
     collections::{HashMap, HashSet},
+    ffi::CString,
     fs::{self},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -13,6 +14,10 @@ use winapi::shared::minwindef::DWORD;
 pub struct ModFile {
     pub relative_path: String,
     pub absolute_path: PathBuf,
+
+    pub relative_path_cstr: CString,
+    pub absolute_path_cstr: CString,
+
     pub handle: Option<SafeHandle>,
     pub work_handle: Option<SafeHandle>,
     pub work_size: Option<i32>,
@@ -42,24 +47,37 @@ impl BinderCollection {
     }
 
     pub fn load_mod_folder(&mut self, mods_folder: &PathBuf) {
-        if let Ok(entries) = fs::read_dir(mods_folder) {
-            for entry in entries.flatten() {
-                let mod_path = entry.path();
-                if mod_path.is_dir() {
-                    let mod_data_path = mod_path.join("mod_data");
-                    if mod_data_path.is_dir() {
-                        self.read_files_recursive(&mod_data_path, &mod_data_path);
-                    } else {
-                        debug_print(&format!(
-                            "[MOD LOADER] mod_data folder not found at {mod_data_path:?}, skipping"
-                        ));
-                    }
-                }
-            }
-        } else {
+        let Ok(entries) = fs::read_dir(mods_folder) else {
             debug_print(&format!(
                 "[MOD LOADER] Failed to read mods folder: {mods_folder:?}"
             ));
+            return;
+        };
+
+        for entry in entries.flatten() {
+            let mod_path = entry.path();
+            if !mod_path.is_dir() {
+                continue;
+            }
+
+            let config_path = mod_path.join("ModConfig.json");
+            if !config_path.is_file() {
+                debug_print(&format!(
+                    "[MOD LOADER] No ModConfig.json in {mod_path:?}, skipping"
+                ));
+                continue;
+            }
+
+            let emulator_path = mod_path.join("FEmulator");
+
+            if !emulator_path.is_dir() {
+                debug_print(&format!(
+                    "[MOD LOADER] FEmulator folder not found at {emulator_path:?}, skipping"
+                ));
+                continue;
+            }
+
+            self.read_files_recursive(&emulator_path, &emulator_path);
         }
     }
 
@@ -101,9 +119,27 @@ impl BinderCollection {
                 let entry_path = entry.path();
                 if entry_path.is_file() {
                     if let Ok(rel_path) = entry_path.strip_prefix(base_path) {
+                        let rel_str = rel_path.to_string_lossy();
+                        let mut components = Path::new(&*rel_str).components();
+
+                        // drop first component (e.g. "SPD")
+                        components.next();
+
+                        let stripped = components.as_path();
+
+                        let normalized = Self::normalize_path(&stripped.to_string_lossy());
+
+                        let relative_cstr =
+                            CString::new(normalized.clone()).expect("invalid mod path");
+
+                        let absolute_cstr = CString::new(entry_path.to_string_lossy().as_bytes())
+                            .expect("invalid absolute path");
+
                         let mod_file = ModFile {
-                            relative_path: Self::normalize_path(&rel_path.to_string_lossy()),
+                            relative_path: normalized,
                             absolute_path: entry_path.clone(),
+                            relative_path_cstr: relative_cstr,
+                            absolute_path_cstr: absolute_cstr,
                             handle: None,
                             binder_id: 0,
                             is_bound: false,

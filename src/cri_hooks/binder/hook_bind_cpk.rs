@@ -1,4 +1,8 @@
-use std::{collections::HashSet, ffi::CString, path::PathBuf};
+use std::{
+    collections::HashSet,
+    ffi::CString,
+    sync::{Arc, Mutex},
+};
 
 use retour::static_detour;
 use winapi::shared::{
@@ -8,8 +12,9 @@ use winapi::shared::{
 
 use crate::{
     BINDER_COLLECTION, CpkBinding,
+    bindings::ModFile,
     cri_hooks::{CriBinderStatus, CriError},
-    hook, pstr_to_string,
+    hook, lock_or_log, pstr_to_string,
     utils::{RawAllocator, SafeHandle, logging::debug_print},
 };
 
@@ -36,7 +41,7 @@ pub fn cri_binder_bind_cpk_hook(
     ));
 
     let should_bind = {
-        let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+        let mut binder_collection = lock_or_log(&BINDER_COLLECTION, "CriBinderBindCpk");
         binder_collection
             .binder_handles
             .insert(SafeHandle(binder_handle))
@@ -69,7 +74,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     ));
 
     let file_list: Vec<String> = {
-        let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+        let binder_collection = lock_or_log(&BINDER_COLLECTION, "HookBindFolder, File List");
 
         binder_collection
             .mod_files
@@ -140,31 +145,54 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
         match status.into() {
             CriBinderStatus::Complete => {
                 super::hook_set_priority::hook_impl(binder_id, priority);
+
                 debug_print(&format!(
                     "[HOOK BIND FOLDER] Took {}ms, bound files: {file_list:?}",
                     start.elapsed().as_millis()
                 ));
 
-                let mut binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+                let binder_updates: Vec<(Arc<Mutex<ModFile>>, u32, SafeHandle, i32)> = {
+                    let binder_collection =
+                        lock_or_log(&BINDER_COLLECTION, "HookBindFolder, Binder Updates");
+                    let paths_set: HashSet<_> = file_list.iter().cloned().collect();
 
-                let paths_set: HashSet<_> = file_list.into_iter().collect();
-                for mod_file_arc in binder_collection.mod_files.values() {
+                    binder_collection
+                        .mod_files
+                        .values()
+                        .filter_map(|mod_file_arc| {
+                            if let Ok(mod_file) = mod_file_arc.lock() {
+                                if paths_set.contains(mod_file.relative_path.as_str()) {
+                                    Some((
+                                        mod_file_arc.clone(),
+                                        binder_id,
+                                        SafeHandle(binder_handle),
+                                        size,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+                for (mod_file_arc, binder_id, handle, work_size) in binder_updates {
                     if let Ok(mut mod_file) = mod_file_arc.lock() {
-                        if paths_set.contains(mod_file.relative_path.as_str()) {
-                            mod_file.binder_id = binder_id;
-                            mod_file.handle = Some(SafeHandle(binder_handle));
-                            mod_file.is_bound = true;
-                            mod_file.work_size = Some(size);
-                            mod_file.work_handle = Some(alloc.as_ptr());
+                        mod_file.binder_id = binder_id;
+                        mod_file.handle = Some(handle);
+                        mod_file.is_bound = true;
+                        mod_file.work_size = Some(work_size);
+                        mod_file.work_handle = Some(alloc.as_ptr());
 
-                            debug_print(&format!(
-                                "[HOOK] Bound mod file: {}\n  binder_id: {}\n  work_size: {}\n  work_handle: {:?}",
-                                mod_file.absolute_path.display(),
-                                binder_id,
-                                size,
-                                alloc.as_ptr().0
-                            ));
-                        }
+                        debug_print(&format!(
+                            "[HOOK] Bound mod file: {}\n  binder_id: {}\n  work_size: {}\n  work_handle: {:?}",
+                            mod_file.absolute_path.display(),
+                            binder_id,
+                            work_size,
+                            alloc.as_ptr().0
+                        ));
                     } else {
                         debug_print(
                             "[HOOK] Failed to lock mod_file mutex for updating binder_id/handle",
@@ -172,8 +200,12 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
                     }
                 }
 
-                let new_binding = CpkBinding::new(alloc, binder_id, true);
-                binder_collection.bindings.push(new_binding);
+                {
+                    let mut binder_collection =
+                        lock_or_log(&BINDER_COLLECTION, "HookBindFolder, CPK Binding");
+                    let new_binding = CpkBinding::new(alloc, binder_id, true);
+                    binder_collection.bindings.push(new_binding);
+                }
 
                 return;
             }

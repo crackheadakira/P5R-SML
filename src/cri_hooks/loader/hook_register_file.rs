@@ -3,7 +3,10 @@ use std::ffi::CString;
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{BINDER_COLLECTION, hook, pstr_to_string, utils::logging::debug_print};
+use crate::{
+    BINDER_COLLECTION, BinderCollection, hook, lock_or_log, pstr_to_string,
+    utils::logging::debug_print,
+};
 
 const CRI_LOADER_REGISTER_FILE_ADDR: usize = 0x1404674e4;
 
@@ -58,36 +61,20 @@ fn cri_loader_register_file_hook(
     let path_string = unsafe { pstr_to_string(path) };
 
     let redirected_path = {
-        let binders = BINDER_COLLECTION.lock().unwrap();
-        if let Some(mod_file_arc) = binders.find_mod_file_by_relative_path(&path_string) {
-            if let Ok(mod_file) = mod_file_arc.lock() {
-                // Only clone the absolute path
-                Some(mod_file.absolute_path.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        let binders = lock_or_log(&BINDER_COLLECTION, "CriLoaderRegisterFile, redirected_path");
+
+        binders
+            .find_mod_file_by_relative_path(&path_string)
+            .map(|mod_file| mod_file.lock().unwrap().absolute_path_cstr.clone())
     };
 
-    if let Some(pathbuf) = redirected_path {
-        let redirected_cstr =
-            CString::new(pathbuf.to_string_lossy().as_bytes()).expect("CString conversion failed");
-
+    if let Some(path) = redirected_path {
         debug_print(&format!(
-            "[CriLoaderRegisterFile] redirecting {path_string:?} to {}",
-            pathbuf.display()
+            "[CriLoaderRegisterFile] redirecting {path_string:?} to {path:?}",
         ));
 
         return unsafe {
-            CriLoader_Register_File.call(
-                loader,
-                binder,
-                redirected_cstr.as_ptr() as PSTR,
-                file_id,
-                zero,
-            )
+            CriLoader_Register_File.call(loader, binder, path.as_ptr() as PSTR, file_id, zero)
         };
     }
 

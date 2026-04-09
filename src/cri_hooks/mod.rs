@@ -4,6 +4,7 @@ pub mod binder {
     pub mod hook_bind_cpk;
     pub mod hook_bind_file;
     pub mod hook_bind_files;
+    pub mod hook_find;
     pub mod hook_unbind;
 
     pub mod hook_get_size_for_bind_files;

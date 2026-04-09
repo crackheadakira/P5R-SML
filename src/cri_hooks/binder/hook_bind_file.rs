@@ -7,8 +7,8 @@ use winapi::shared::{
 
 use crate::{
     BINDER_COLLECTION,
-    cri_hooks::{CriError, binder},
-    hook, pstr_to_string,
+    cri_hooks::CriError,
+    hook, lock_or_log, pstr_to_string,
     utils::{SafeHandle, logging::debug_print},
 };
 
@@ -42,7 +42,7 @@ pub fn hook_impl(
         };
     }
 
-    let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+    let binder_collection = lock_or_log(&BINDER_COLLECTION, "CriBinderBindFile, src_binder_handle");
 
     if !binder_collection
         .binder_handles
@@ -68,7 +68,8 @@ pub fn hook_impl(
     let path_str = unsafe { pstr_to_string(path) };
 
     let redirected_path = {
-        let binder_collection = BINDER_COLLECTION.lock().expect("Mutex poisoned");
+        let binder_collection =
+            lock_or_log(&BINDER_COLLECTION, "CriBinderBindFile, redirected_path");
         if let Some(mod_file_arc) = binder_collection.find_mod_file_by_relative_path(&path_str) {
             if let Ok(mod_file) = mod_file_arc.lock() {
                 Some(mod_file.absolute_path.clone())

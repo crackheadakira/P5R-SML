@@ -6,7 +6,7 @@ use winapi::shared::{
 };
 
 use crate::{
-    BINDER_COLLECTION, SafeHandle, cri_hooks::CriError, hook, pstr_to_string,
+    BINDER_COLLECTION, SafeHandle, cri_hooks::CriError, hook, lock_or_log, pstr_to_string,
     utils::logging::debug_print,
 };
 
@@ -29,8 +29,6 @@ pub fn hook_impl(
 ) -> CriError {
     let path_str = unsafe { pstr_to_string(path) };
 
-    let binder_collection = BINDER_COLLECTION.lock().expect("Mutex poisoned");
-
     if src_binder_handle.is_null() {
         return unsafe {
             Cri_Binder_Bind_Files.call(
@@ -43,6 +41,9 @@ pub fn hook_impl(
             )
         };
     }
+
+    let binder_collection =
+        lock_or_log(&BINDER_COLLECTION, "CriBinderBindFiles, src_binder_handle");
 
     if !binder_collection
         .binder_handles
@@ -66,7 +67,8 @@ pub fn hook_impl(
     drop(binder_collection);
 
     let redirected_path = {
-        let binder_collection = BINDER_COLLECTION.lock().expect("Mutex poisoned");
+        let binder_collection =
+            lock_or_log(&BINDER_COLLECTION, "CriBinderBindFiles, redirected_path");
         if let Some(mod_file_arc) = binder_collection.find_mod_file_by_relative_path(&path_str) {
             if let Ok(mod_file) = mod_file_arc.lock() {
                 Some(mod_file.absolute_path.clone())
