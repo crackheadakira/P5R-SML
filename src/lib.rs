@@ -39,8 +39,8 @@ pub unsafe extern "system" fn DllMain(
     }
 
     let pid = unsafe { GetCurrentProcessId() };
-    debug_print(&format!("[HOOK] Injected into process with PID: {pid}"));
-    debug_print("[HOOK] Hooks installed successfully");
+    debug_print(&format!("[P5 SML] Injected into process with PID: {pid}"));
+    debug_print("[P5 SML] Hooks installed successfully");
 
     // get mod files
     let base_directory = get_base_dir();
@@ -95,16 +95,6 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     cri_hooks::io::hook_exists::register_hook()?;
 
     Ok(())
-}
-
-fn paths_to_cstring(paths: &[PathBuf]) -> Result<CString, std::ffi::NulError> {
-    let joined = paths
-        .iter()
-        .map(|p| p.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    CString::new(joined)
 }
 
 pub unsafe fn pstr_to_string(pstr: *const i8) -> String {

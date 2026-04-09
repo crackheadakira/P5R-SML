@@ -1,16 +1,16 @@
 use retour::static_detour;
 use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
-use crate::{cri_hooks::CriStatus, hook, utils::logging::debug_print};
+use crate::{cri_hooks::CriError, hook, utils::logging::debug_print};
 
 const CRI_BINDER_SET_PRIORITY_ADDR: usize = 0x140462f5c;
 
 static_detour! {
-    static Cri_Binder_Set_Priority: unsafe extern "system" fn(DWORD, INT) -> CriStatus;
+    static Cri_Binder_Set_Priority: unsafe extern "system" fn(DWORD, INT) -> CriError;
 }
-type FnCriBinderSetPriority = unsafe extern "system" fn(DWORD, INT) -> CriStatus;
+type FnCriBinderSetPriority = unsafe extern "system" fn(DWORD, INT) -> CriError;
 
-pub fn hook_impl(binder_id: DWORD, priority: INT) -> CriStatus {
+pub fn hook_impl(binder_id: DWORD, priority: INT) -> CriError {
     debug_print(&format!(
         "[CriBinderSetPriority] binder_id: {binder_id}, priority: {priority}"
     ));

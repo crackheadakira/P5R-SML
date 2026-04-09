@@ -20,18 +20,20 @@ pub mod loader {
     pub mod hook_register_file;
 }
 
+pub use crate::cri_hooks::binder::hook_get_status::CriBinderStatus;
+
 #[macro_export]
 macro_rules! hook {
     ($fn_type:ty, $detour:ident, $addr:expr, $handler:ident) => {
         let fn_ptr: $fn_type = std::mem::transmute($addr);
         $detour.initialize(fn_ptr, $handler)?.enable()?;
-        debug_print(concat!("[HOOK] ", stringify!($detour), " enabled"));
+        debug_print(concat!("[P5 SML] ", stringify!($detour), " enabled"));
     };
 }
 
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum CriStatus {
+pub enum CriError {
     /// Succeeded.
     Success = 0,
 
@@ -57,23 +59,23 @@ pub enum CriStatus {
     Unknown = -7,
 }
 
-impl From<INT> for CriStatus {
+impl From<INT> for CriError {
     fn from(value: INT) -> Self {
         match value {
-            0 => CriStatus::Success,
-            -1 => CriStatus::Failure,
-            -2 => CriStatus::InvalidParameter,
-            -3 => CriStatus::FailedToAllocateMemory,
-            -4 => CriStatus::UnsafeFunctionCall,
-            -5 => CriStatus::FunctionNotImplemented,
-            -6 => CriStatus::LibraryNotInitialized,
-            _ => CriStatus::Unknown,
+            0 => CriError::Success,
+            -1 => CriError::Failure,
+            -2 => CriError::InvalidParameter,
+            -3 => CriError::FailedToAllocateMemory,
+            -4 => CriError::UnsafeFunctionCall,
+            -5 => CriError::FunctionNotImplemented,
+            -6 => CriError::LibraryNotInitialized,
+            _ => CriError::Unknown,
         }
     }
 }
 
-impl From<CriStatus> for INT {
-    fn from(err: CriStatus) -> Self {
+impl From<CriError> for INT {
+    fn from(err: CriError) -> Self {
         err as INT
     }
 }

@@ -3,16 +3,18 @@ use std::fmt;
 use retour::static_detour;
 use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
-use crate::{BINDER_COLLECTION, cri_hooks::CriStatus, hook, utils::logging::debug_print};
+use crate::{hook, utils::logging::debug_print};
 
 const CRI_BINDER_GET_STATUS: usize = 0x14046260c;
 
 static_detour! {
-    static Cri_Binder_Get_Status: unsafe extern "system" fn(DWORD, *mut INT) -> CriStatus;
+    static Cri_Binder_Get_Status: unsafe extern "system" fn(DWORD, *mut INT) -> CriBinderStatus;
 }
 
-type FnCriBinderGetStatus = unsafe extern "system" fn(DWORD, *mut INT) -> CriStatus;
+type FnCriBinderGetStatus = unsafe extern "system" fn(DWORD, *mut INT) -> CriBinderStatus;
 
+#[repr(i32)]
+#[derive(Debug)]
 pub enum CriBinderStatus {
     None,
     Analyze,
@@ -62,7 +64,7 @@ impl fmt::Display for CriBinderStatus {
     }
 }
 
-pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriStatus {
+pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriBinderStatus {
     let res = unsafe { Cri_Binder_Get_Status.call(binder_id, status) };
 
     debug_print(&format!(
