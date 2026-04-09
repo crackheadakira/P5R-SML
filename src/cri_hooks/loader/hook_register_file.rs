@@ -1,8 +1,10 @@
+use std::ffi::CString;
+
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
 use crate::{
-    BINDER_COLLECTION, bindings::BinderCollection, hook, pstr_to_string,
+    BINDER_COLLECTION, BinderCollection, hook, lock_or_log, pstr_to_string,
     utils::logging::debug_print,
 };
 
@@ -21,65 +23,59 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
             FnCriLoaderRegisterFile,
             CriLoader_Register_File,
             CRI_LOADER_REGISTER_FILE_ADDR,
-            hook_impl
+            cri_loader_register_file_hook
         );
     }
 
     Ok(())
 }
 
-fn hook_impl(loader: HANDLE, binder: HANDLE, path: PSTR, file_id: INT, zero: HANDLE) -> HANDLE {
-    let requested_path = unsafe { pstr_to_string(path) };
+/// Registers a file before loading it.
+///
+/// ## Arguments
+///
+/// * `loader`: The handle to the CriFs Loader.
+/// * `binder`: The handle to the CriFs Binder.
+/// * `path`: Pointer to a string with the file path. This path is relative and is usually ANSI.
+/// * `fileId`: The ID of the file within the archive (CPK). -1 if not using ID.
+/// * `zero`: Unknown, usually zero.
+///
+/// # Safety
+/// This function is called from the game and must preserve the original ABI.
+fn cri_loader_register_file_hook(
+    loader: HANDLE,
+    binder: HANDLE,
+    path: PSTR,
+    file_id: INT,
+    zero: HANDLE,
+) -> HANDLE {
     debug_print(&format!(
-        "[HOOK] register_file, path: {requested_path}, file_id: {file_id}, binder: {binder:?}"
+        "[CriLoaderRegisterFile] loader: {loader:?}, binder: {binder:?}, path: {}, file_id: {file_id}",
+        unsafe { pstr_to_string(path) }
     ));
 
     if file_id != -1 {
         return unsafe { CriLoader_Register_File.call(loader, binder, path, file_id, zero) };
     }
 
-    let binder_collection = BINDER_COLLECTION.lock().expect("Mutex poisoned");
+    let path_string = unsafe { pstr_to_string(path) };
 
-    let requested_path_sanitized = requested_path.replace('\\', "/").to_lowercase();
+    let redirected_path = {
+        let binders = lock_or_log(&BINDER_COLLECTION, "CriLoaderRegisterFile, redirected_path");
 
-    let mod_file_arc_opt = binder_collection.mod_files.values().find(|mod_file_arc| {
-        if let Ok(mod_file) = mod_file_arc.lock() {
-            mod_file.relative_path.to_string_lossy().to_lowercase() == requested_path_sanitized
-        } else {
-            false
-        }
-    });
+        binders
+            .find_mod_file_by_relative_path(&path_string)
+            .map(|mod_file| mod_file.lock().unwrap().absolute_path_cstr.clone())
+    };
 
-    if let Some(mod_file_arc) = mod_file_arc_opt {
-        if let Ok(mod_file) = mod_file_arc.lock() {
-            // Convert mod path to CString safely
-            if let Ok(mod_path_cstr) =
-                std::ffi::CString::new(mod_file.absolute_path.to_string_lossy().as_bytes())
-            {
-                debug_print(&format!(
-                    "[HOOK] register_file redirecting {} -> {}",
-                    requested_path,
-                    mod_file.absolute_path.display()
-                ));
-
-                return unsafe {
-                    CriLoader_Register_File.call(
-                        loader,
-                        binder,
-                        mod_path_cstr.as_ptr() as PSTR,
-                        file_id,
-                        zero,
-                    )
-                };
-            } else {
-                debug_print("[HOOK] Failed to convert mod path to CString, using original path");
-            }
-        }
-    } else {
+    if let Some(path) = redirected_path {
         debug_print(&format!(
-            "[HOOK] No mod override found for {}, falling back to original",
-            requested_path
+            "[CriLoaderRegisterFile] redirecting {path_string:?} to {path:?}",
         ));
+
+        return unsafe {
+            CriLoader_Register_File.call(loader, binder, path.as_ptr() as PSTR, file_id, zero)
+        };
     }
 
     unsafe { CriLoader_Register_File.call(loader, binder, path, file_id, zero) }

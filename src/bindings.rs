@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{
     collections::{HashMap, HashSet},
+    ffi::CString,
     fs::{self},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -11,8 +12,12 @@ use std::{
 use winapi::shared::minwindef::DWORD;
 
 pub struct ModFile {
-    pub relative_path: PathBuf,
+    pub relative_path: String,
     pub absolute_path: PathBuf,
+
+    pub relative_path_cstr: CString,
+    pub absolute_path_cstr: CString,
+
     pub handle: Option<SafeHandle>,
     pub work_handle: Option<SafeHandle>,
     pub work_size: Option<i32>,
@@ -23,7 +28,7 @@ pub struct ModFile {
 pub struct BinderCollection {
     pub binder_handles: HashSet<SafeHandle>,
     pub bindings: Vec<CpkBinding>,
-    pub mod_files: HashMap<PathBuf, Arc<Mutex<ModFile>>>,
+    pub mod_files: HashMap<String, Arc<Mutex<ModFile>>>,
 }
 
 impl Default for BinderCollection {
@@ -42,93 +47,99 @@ impl BinderCollection {
     }
 
     pub fn load_mod_folder(&mut self, mods_folder: &PathBuf) {
-        // get all mod_data inside of folders, then recursively read them
-        if let Ok(entries) = fs::read_dir(mods_folder) {
-            for entry in entries.flatten() {
-                let mod_path = entry.path();
-                if mod_path.is_dir() {
-                    let mod_data_path = mod_path.join("mod_data");
-                    if mod_data_path.is_dir() {
-                        self.read_files_recursive(&mod_data_path, &mod_data_path);
-                    } else {
-                        debug_print(&format!(
-                            "[MOD LOADER] mod_data folder not found at {mod_data_path:?}, skipping"
-                        ));
-                    }
-                }
-            }
-        } else {
+        let Ok(entries) = fs::read_dir(mods_folder) else {
             debug_print(&format!(
                 "[MOD LOADER] Failed to read mods folder: {mods_folder:?}"
             ));
+            return;
+        };
+
+        for entry in entries.flatten() {
+            let mod_path = entry.path();
+            if !mod_path.is_dir() {
+                continue;
+            }
+
+            let config_path = mod_path.join("ModConfig.json");
+            if !config_path.is_file() {
+                debug_print(&format!(
+                    "[MOD LOADER] No ModConfig.json in {mod_path:?}, skipping"
+                ));
+                continue;
+            }
+
+            let emulator_path = mod_path.join("FEmulator");
+
+            if !emulator_path.is_dir() {
+                debug_print(&format!(
+                    "[MOD LOADER] FEmulator folder not found at {emulator_path:?}, skipping"
+                ));
+                continue;
+            }
+
+            self.read_files_recursive(&emulator_path, &emulator_path);
         }
     }
 
-    pub fn normalize_path(path: &Path) -> PathBuf {
-        let mut s = path.to_string_lossy().replace('\\', "/").to_lowercase();
-        if s.starts_with('/') {
-            s.remove(0);
-        }
-        PathBuf::from(s)
-    }
-
-    pub fn sanitize_cri_path(path: &str) -> String {
-        let mut s = path.replace('\\', "/").to_lowercase();
-        if s.starts_with('/') {
-            s.remove(0);
-        }
-        s
-    }
-
-    pub fn normalized_path_from_string(path: &str) -> PathBuf {
-        let s = path.replace('\\', "/");
-        PathBuf::from(s)
+    pub fn normalize_path(path: &str) -> String {
+        path.replace('\\', "/")
+            .to_lowercase()
+            .trim_start_matches('/')
+            .to_string()
     }
 
     pub fn find_mod_file_by_relative_path(
         &self,
-        target_path: &Path,
+        target_path: &str,
     ) -> Option<&Arc<Mutex<ModFile>>> {
-        self.mod_files.values().find(|mod_file_arc| {
-            if let Ok(mod_file) = mod_file_arc.lock() {
-                mod_file.relative_path == target_path
-            } else {
-                false
-            }
-        })
+        self.mod_files.get(&Self::normalize_path(target_path))
     }
 
-    pub fn get_handle_for_path(&self, path: &PathBuf) -> Option<SafeHandle> {
-        if let Some(mod_file_arc) = self.mod_files.get(path)
-            && let Ok(mod_file) = mod_file_arc.lock()
-        {
-            for binding in &self.bindings {
-                if binding.bind_id == mod_file.binder_id {
-                    return Some(binding.work_mem_ptr());
+    pub fn file_is_mod(&self, target_path: &str) -> bool {
+        self.mod_files
+            .contains_key(&Self::normalize_path(target_path))
+    }
+
+    pub fn get_handle_for_path(&self, path: &str) -> Option<SafeHandle> {
+        if let Some(mod_file_arc) = self.mod_files.get(&Self::normalize_path(path)) {
+            if let Ok(mod_file) = mod_file_arc.lock() {
+                for binding in &self.bindings {
+                    if binding.bind_id == mod_file.binder_id {
+                        return Some(binding.work_mem_ptr());
+                    }
                 }
             }
         }
         None
     }
 
-    pub fn file_is_mod(&self, path: &PathBuf) -> bool {
-        self.mod_files.contains_key(path)
-    }
-
-    fn read_files_recursive(&mut self, path: &PathBuf, base_path: &PathBuf) {
+    fn read_files_recursive(&mut self, path: &Path, base_path: &Path) {
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
                 let entry_path = entry.path();
                 if entry_path.is_file() {
                     if let Ok(rel_path) = entry_path.strip_prefix(base_path) {
-                        let mut components = rel_path.components();
+                        let rel_str = rel_path.to_string_lossy();
+                        let mut components = Path::new(&*rel_str).components();
+
+                        // drop first component (e.g. "SPD")
                         components.next();
 
-                        let stripped_rel_path = components.as_path();
+                        let stripped = components.as_path();
+
+                        let normalized = Self::normalize_path(&stripped.to_string_lossy());
+
+                        let relative_cstr =
+                            CString::new(normalized.clone()).expect("invalid mod path");
+
+                        let absolute_cstr = CString::new(entry_path.to_string_lossy().as_bytes())
+                            .expect("invalid absolute path");
 
                         let mod_file = ModFile {
-                            relative_path: Self::normalize_path(stripped_rel_path),
-                            absolute_path: Self::normalize_path(&entry_path),
+                            relative_path: normalized,
+                            absolute_path: entry_path.clone(),
+                            relative_path_cstr: relative_cstr,
+                            absolute_path_cstr: absolute_cstr,
                             handle: None,
                             binder_id: 0,
                             is_bound: false,
@@ -137,13 +148,13 @@ impl BinderCollection {
                         };
 
                         debug_print(&format!(
-                            "[MOD LOADER] Added mod folder: {} (from file: {})",
-                            mod_file.relative_path.display(),
+                            "[MOD LOADER] Added mod file: {} (from: {})",
+                            mod_file.relative_path,
                             mod_file.absolute_path.display()
                         ));
 
                         self.mod_files.insert(
-                            Self::normalize_path(stripped_rel_path),
+                            mod_file.relative_path.clone(),
                             Arc::new(Mutex::new(mod_file)),
                         );
                     }

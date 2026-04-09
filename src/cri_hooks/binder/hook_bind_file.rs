@@ -1,21 +1,25 @@
 use retour::static_detour;
+use std::ffi::CString;
 use winapi::shared::{
     minwindef::DWORD,
-    ntdef::{HANDLE, INT, NULL, PSTR},
+    ntdef::{HANDLE, INT, PSTR},
 };
 
 use crate::{
-    BINDER_COLLECTION, cri_hooks::CriStatus, hook, pstr_to_string, utils::logging::debug_print,
+    BINDER_COLLECTION,
+    cri_hooks::CriError,
+    hook, lock_or_log, pstr_to_string,
+    utils::{SafeHandle, logging::debug_print},
 };
 
 const CRI_BINDER_BIND_FILE_ADDR: usize = 0x140460b6c;
 
 static_detour! {
-    static Cri_Binder_Bind_File: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
+    static Cri_Binder_Bind_File: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
 }
 
 type FnCriBinderBindFile =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriStatus;
+    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
 
 pub fn hook_impl(
     binder_handle: HANDLE,
@@ -24,89 +28,79 @@ pub fn hook_impl(
     work: HANDLE,
     work_size: INT,
     binder_id: *mut DWORD,
-) -> CriStatus {
-    debug_print(&format!(
-        "[HOOK] bind_file, binder_handle {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {path:?}, work: {work:?}, work_size: {work_size}"
-    ));
+) -> CriError {
+    if src_binder_handle.is_null() {
+        return unsafe {
+            Cri_Binder_Bind_File.call(
+                binder_handle,
+                src_binder_handle,
+                path,
+                work,
+                work_size,
+                binder_id,
+            )
+        };
+    }
 
-    let requested_path = unsafe { pstr_to_string(path) };
+    let binder_collection = lock_or_log(&BINDER_COLLECTION, "CriBinderBindFile, src_binder_handle");
 
-    let binder_collection = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+    if !binder_collection
+        .binder_handles
+        .contains(&SafeHandle(src_binder_handle))
+    {
+        debug_print(&format!(
+            "[CriBinderBindFile] Unrecognized src_binder_handle: {src_binder_handle:?}",
+        ));
+        return unsafe {
+            Cri_Binder_Bind_File.call(
+                binder_handle,
+                src_binder_handle,
+                path,
+                work,
+                work_size,
+                binder_id,
+            )
+        };
+    }
 
-    if let Some(mod_file_arc) = binder_collection
-        .mod_files
-        .values()
-        .find_map(|mod_file_arc| {
-            let mod_file = mod_file_arc.lock().ok()?;
-            if mod_file.relative_path.to_string_lossy() == requested_path {
-                Some(mod_file_arc.clone())
+    drop(binder_collection);
+
+    let path_str = unsafe { pstr_to_string(path) };
+
+    let redirected_path = {
+        let binder_collection =
+            lock_or_log(&BINDER_COLLECTION, "CriBinderBindFile, redirected_path");
+        if let Some(mod_file_arc) = binder_collection.find_mod_file_by_relative_path(&path_str) {
+            if let Ok(mod_file) = mod_file_arc.lock() {
+                Some(mod_file.absolute_path.clone())
             } else {
                 None
             }
-        })
-    {
-        let mod_file = mod_file_arc.lock().unwrap();
-
-        // If game hasn't allocated buffer (work_size == 0), just return your binder_id:
-        if work_size == 0 {
-            unsafe {
-                *binder_id = mod_file.binder_id;
-            }
-            debug_print(&format!(
-                "[HOOK] bind_file with work_size=0, returning binder_id {} for {requested_path}",
-                mod_file.binder_id
-            ));
-            return unsafe {
-                Cri_Binder_Bind_File.call(
-                    binder_handle,
-                    src_binder_handle,
-                    path,
-                    work,
-                    work_size,
-                    binder_id,
-                )
-            };
-        }
-
-        // If game provided buffer, copy your pre-allocated data into it:
-        if let (Some(mod_buf_ptr), Some(mod_buf_size)) = (mod_file.work_handle, mod_file.work_size)
-        {
-            if (mod_buf_size as usize) > (work_size as usize) {
-                debug_print(&format!(
-                    "[HOOK] Buffer too small: mod_buf_size {mod_buf_size} > work_size {work_size}",
-                ));
-                return CriStatus::Failure;
-            }
-
-            if work.is_null() {
-                debug_print("[HOOK] bind_file called with null work buffer");
-                return CriStatus::Failure;
-            }
-
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    mod_buf_ptr.0 as *const u8,
-                    work as *mut u8,
-                    mod_buf_size as usize,
-                );
-
-                *binder_id = mod_file.binder_id;
-            }
-
-            debug_print(&format!(
-                "[HOOK] Copied pre-allocated mod data for {} into game buffer",
-                requested_path
-            ));
-            return CriStatus::Success;
         } else {
-            debug_print("[HOOK] Missing work_handle or work_size on mod file");
+            None
         }
-    }
+    };
 
-    debug_print(&format!(
-        "[HOOK] No mod file override found for {}, falling back to original",
-        requested_path
-    ));
+    if let Some(pathbuf) = redirected_path {
+        let new_cstr =
+            CString::new(pathbuf.to_string_lossy().as_bytes()).expect("CString conversion failed");
+
+        debug_print(&format!(
+            "[CriBinderBindFiles] Replacing {path_str} -> {}",
+            pathbuf.display()
+        ));
+
+        return unsafe {
+            Cri_Binder_Bind_File.call(
+                binder_handle,
+                src_binder_handle,
+                new_cstr.as_ptr() as PSTR,
+                work,
+                work_size,
+                binder_id,
+            )
+        };
+    }
 
     unsafe {
         Cri_Binder_Bind_File.call(

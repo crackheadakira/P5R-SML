@@ -39,14 +39,14 @@ pub unsafe extern "system" fn DllMain(
     }
 
     let pid = unsafe { GetCurrentProcessId() };
-    debug_print(&format!("[HOOK] Injected into process with PID: {pid}"));
-    debug_print("[HOOK] Hooks installed successfully");
+    debug_print(&format!("[P5 SML] Injected into process with PID: {pid}"));
+    debug_print("[P5 SML] Hooks installed successfully");
 
     // get mod files
     let base_directory = get_base_dir();
     let mods_directory = base_directory.join("mods");
 
-    let mut binders = BINDER_COLLECTION.lock().expect("Mutex was poisoned");
+    let mut binders = lock_or_log(&BINDER_COLLECTION, "DllMain");
     binders.load_mod_folder(&mods_directory);
 
     BOOL::from(true)
@@ -86,6 +86,7 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     cri_hooks::binder::hook_bind_file::register_hook()?;
     cri_hooks::binder::hook_bind_files::register_hook()?;
     cri_hooks::binder::hook_unbind::register_hook()?;
+    cri_hooks::binder::hook_find::register_hook()?;
 
     cri_hooks::binder::hook_get_size_for_bind_files::register_hook()?;
     cri_hooks::binder::hook_get_status::register_hook()?;
@@ -97,20 +98,20 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn paths_to_cstring(paths: &[PathBuf]) -> Result<CString, std::ffi::NulError> {
-    let joined = paths
-        .iter()
-        .map(|p| p.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    CString::new(joined)
-}
-
 pub unsafe fn pstr_to_string(pstr: *const i8) -> String {
     if pstr.is_null() {
         return String::new();
     }
     let cstr = unsafe { CStr::from_ptr(pstr) };
     cstr.to_string_lossy().into_owned()
+}
+
+pub fn lock_or_log<'a, T>(mutex: &'a Mutex<T>, context: &str) -> std::sync::MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            debug_print(&format!("[MUTEX POISONED] {} mutex was poisoned", context));
+            poisoned.into_inner()
+        }
+    }
 }

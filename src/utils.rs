@@ -4,7 +4,7 @@ use winapi::{
     shared::ntdef::HANDLE,
     um::{
         memoryapi::{VirtualAlloc, VirtualFree},
-        winnt::{MEM_COMMIT, MEM_RELEASE, PAGE_READWRITE},
+        winnt::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE},
     },
 };
 
@@ -26,10 +26,18 @@ pub struct RawAllocator {
     ptr: SafeHandle,
 }
 
+unsafe impl Send for RawAllocator {}
+unsafe impl Sync for RawAllocator {}
+
 impl RawAllocator {
     pub fn new(size: usize) -> Option<Self> {
         unsafe {
-            let ptr = VirtualAlloc(std::ptr::null_mut(), size, MEM_COMMIT, PAGE_READWRITE);
+            let ptr = VirtualAlloc(
+                std::ptr::null_mut(),
+                size,
+                MEM_COMMIT | MEM_RESERVE,
+                PAGE_READWRITE,
+            );
 
             if ptr.is_null() {
                 None
