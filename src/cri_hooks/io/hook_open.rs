@@ -18,15 +18,11 @@ pub fn hook_impl(
     desired_access: INT,
     result: *mut HANDLE,
 ) -> HANDLE {
-    let path_str = unsafe { pstr_to_string(string_ptr) };
-
-    debug_print(&format!(
-        "[CriIoOpen] path: {path_str}, file_creation_type: {file_creation_type}, desired_access: {desired_access}",
-    ));
-
     if string_ptr.is_null() {
         return unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) };
     }
+
+    let path_str = unsafe { pstr_to_string(string_ptr) };
 
     let new_path = {
         let binder_collection = lock_or_log(&BINDER_COLLECTION, "CriIoOpen, new_path");
