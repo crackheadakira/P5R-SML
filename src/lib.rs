@@ -2,8 +2,7 @@ use crate::bindings::BinderCollection;
 use crate::utils::logging::{debug_print, error_message_box};
 use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
 use once_cell::sync::Lazy;
-use std::ffi::{CStr, CString};
-use std::path::PathBuf;
+use std::ffi::CStr;
 use std::sync::Mutex;
 use winapi::shared::minwindef::HINSTANCE;
 use winapi::shared::minwindef::{BOOL, DWORD, LPVOID};
@@ -12,6 +11,8 @@ use winapi::um::winnt::DLL_PROCESS_ATTACH;
 
 mod bindings;
 mod cri_hooks;
+pub mod spd;
+mod spd_load;
 mod utils;
 
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
@@ -48,6 +49,17 @@ pub unsafe extern "system" fn DllMain(
 
     let mut binders = lock_or_log(&BINDER_COLLECTION, "DllMain");
     binders.load_mod_folder(&mods_directory);
+
+    for entry in std::fs::read_dir(&mods_directory)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let mod_path = entry.path();
+        if mod_path.is_dir() {
+            spd::register_spd_mod(&mod_path);
+        }
+    }
 
     BOOL::from(true)
 }
@@ -94,6 +106,10 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
 
     cri_hooks::io::hook_open::register_hook()?;
     cri_hooks::io::hook_exists::register_hook()?;
+
+    spd_load::register_hook()?;
+
+    // windows::register_hook()?;
 
     Ok(())
 }
