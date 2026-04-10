@@ -13,11 +13,13 @@ static_detour! {
 type FnCriIoExists = unsafe extern "system" fn(PSTR, *mut INT) -> HANDLE;
 
 pub fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
+    let path_str = unsafe { pstr_to_string(string_ptr) };
+
+    debug_print(&format!("[CriIoExists] path: {path_str}"));
+
     if string_ptr.is_null() {
         return unsafe { Cri_Io_Exists.call(string_ptr, result) };
     }
-
-    let path_str = unsafe { pstr_to_string(string_ptr) };
 
     let new_path = {
         let binder_collection = lock_or_log(&BINDER_COLLECTION, "CriIoExists, new_path");
