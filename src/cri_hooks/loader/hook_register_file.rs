@@ -1,12 +1,7 @@
-use std::ffi::CString;
-
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{
-    BINDER_COLLECTION, BinderCollection, hook, lock_or_log, pstr_to_string,
-    utils::logging::debug_print,
-};
+use crate::{BINDER_COLLECTION, hook, lock_or_log, pstr_to_string, utils::logging::debug_print};
 
 const CRI_LOADER_REGISTER_FILE_ADDR: usize = 0x1404674e4;
 
@@ -49,10 +44,10 @@ fn cri_loader_register_file_hook(
     file_id: INT,
     zero: HANDLE,
 ) -> HANDLE {
-    debug_print(&format!(
+    debug_print!(
         "[CriLoaderRegisterFile] loader: {loader:?}, binder: {binder:?}, path: {}, file_id: {file_id}",
         unsafe { pstr_to_string(path) }
-    ));
+    );
 
     if file_id != -1 {
         return unsafe { CriLoader_Register_File.call(loader, binder, path, file_id, zero) };
@@ -69,9 +64,7 @@ fn cri_loader_register_file_hook(
     };
 
     if let Some(path) = redirected_path {
-        debug_print(&format!(
-            "[CriLoaderRegisterFile] redirecting {path_string:?} to {path:?}",
-        ));
+        debug_print!("[CriLoaderRegisterFile] redirecting {path_string:?} to {path:?}",);
 
         return unsafe {
             CriLoader_Register_File.call(loader, binder, path.as_ptr() as PSTR, file_id, zero)

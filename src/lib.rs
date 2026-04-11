@@ -4,15 +4,13 @@ use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
 use once_cell::sync::Lazy;
 use std::ffi::CStr;
 use std::sync::Mutex;
-use winapi::shared::minwindef::HINSTANCE;
-use winapi::shared::minwindef::{BOOL, DWORD, LPVOID};
+use winapi::shared::minwindef::{BOOL, DWORD, HINSTANCE, LPVOID, TRUE};
 use winapi::um::processthreadsapi::GetCurrentProcessId;
 use winapi::um::winnt::DLL_PROCESS_ATTACH;
 
 mod bindings;
 mod cri_hooks;
-pub mod spd;
-mod spd_load;
+mod spd;
 mod utils;
 
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
@@ -26,42 +24,62 @@ pub unsafe extern "system" fn DllMain(
     fdw_reason: DWORD,
     _lpv_reserved: LPVOID,
 ) -> BOOL {
-    if fdw_reason != DLL_PROCESS_ATTACH {
-        return BOOL::from(true);
-    }
-
-    unsafe {
-        winapi::um::libloaderapi::DisableThreadLibraryCalls(_hinst_dll);
-
-        if let Err(e) = install_hooks() {
-            error_message_box(&format!("{e}"), "Persona 5 Mod Loader");
-            return BOOL::from(false);
+    if fdw_reason == DLL_PROCESS_ATTACH {
+        // 1. Immediately disable thread calls to save performance
+        unsafe {
+            winapi::um::libloaderapi::DisableThreadLibraryCalls(_hinst_dll);
         }
+
+        // 2. SPAWN A THREAD.
+        // We exit DllMain as fast as possible so the game can continue loading its own DLLs.
+        std::thread::spawn(|| {
+            if let Err(e) = initialize_loader() {
+                error_message_box(
+                    &format!("Initialization Error: {e}"),
+                    "P5R Simple Mod Loader",
+                );
+            }
+        });
     }
 
-    let pid = unsafe { GetCurrentProcessId() };
-    debug_print(&format!("[P5 SML] Injected into process with PID: {pid}"));
-    debug_print("[P5 SML] Hooks installed successfully");
+    TRUE // winapi TRUE is just 1
+}
 
-    // get mod files
+fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
+    let pid = unsafe { GetCurrentProcessId() };
+    debug_print!("[P5R SML] version.dll proxy active (PID: {pid})");
+
+    // Install hooks
+    install_hooks()?;
+    debug_print!("[P5R SML] All hooks installed successfully");
+
+    // Get mod files
     let base_directory = get_base_dir();
     let mods_directory = base_directory.join("mods");
 
-    let mut binders = lock_or_log(&BINDER_COLLECTION, "DllMain");
-    binders.load_mod_folder(&mods_directory);
+    // Ensure directory exists
+    if !mods_directory.exists() {
+        std::fs::create_dir_all(&mods_directory).ok();
+    }
 
-    for entry in std::fs::read_dir(&mods_directory)
-        .into_iter()
-        .flatten()
-        .flatten()
+    // Load Binders
     {
-        let mod_path = entry.path();
-        if mod_path.is_dir() {
-            spd::register_spd_mod(&mod_path);
+        let mut binders = lock_or_log(&BINDER_COLLECTION, "DllMain");
+        binders.load_mod_folder(&mods_directory);
+    }
+
+    // Load SPDs
+    if let Ok(entries) = std::fs::read_dir(&mods_directory) {
+        for entry in entries.flatten() {
+            let mod_path = entry.path();
+            if mod_path.is_dir() {
+                spd::on_mod_loading(&mod_path);
+            }
         }
     }
 
-    BOOL::from(true)
+    debug_print!("[P5R SML] Mod initialization complete.");
+    Ok(())
 }
 
 pub struct CpkBinding {
@@ -107,9 +125,8 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     cri_hooks::io::hook_open::register_hook()?;
     cri_hooks::io::hook_exists::register_hook()?;
 
-    spd_load::register_hook()?;
-
-    // windows::register_hook()?;
+    // spd::hook_spd_load::register_hook()?;
+    spd::hook_spd_tick::register_hook()?;
 
     Ok(())
 }
@@ -126,7 +143,7 @@ pub fn lock_or_log<'a, T>(mutex: &'a Mutex<T>, context: &str) -> std::sync::Mute
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            debug_print(&format!("[MUTEX POISONED] {} mutex was poisoned", context));
+            debug_print!("[MUTEX POISONED] {context} mutex was poisoned");
             poisoned.into_inner()
         }
     }

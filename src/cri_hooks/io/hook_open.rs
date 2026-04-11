@@ -41,11 +41,10 @@ pub fn hook_impl(
         let temp_cstr = CString::new(full_path.to_string_lossy().as_bytes())
             .expect("CString conversion failed");
 
-        debug_print(&format!(
-            "[CriIoOpen] redirecting {} -> {}",
-            path_str,
+        debug_print!(
+            "[CriIoOpen] redirecting {path_str} -> {}",
             full_path.display()
-        ));
+        );
 
         let status = unsafe {
             Cri_Io_Open.call(

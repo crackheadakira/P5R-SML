@@ -18,11 +18,11 @@ pub fn cri_binder_get_size_for_bind_files_hook(
     let status =
         unsafe { Cri_Binder_Get_Size_For_Bind_Files.call(src_binder_handle, path, work_size) };
 
-    debug_print(&format!(
+    debug_print!(
         "[CriBinderGetSizeForBindFiles] path: {}, work_size: {}, cri_status: {status:?}",
         unsafe { pstr_to_string(path) },
         unsafe { *work_size }
-    ));
+    );
 
     status
 }

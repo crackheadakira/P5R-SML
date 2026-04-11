@@ -49,9 +49,7 @@ pub fn hook_impl(
         .binder_handles
         .contains(&SafeHandle(src_binder_handle))
     {
-        debug_print(&format!(
-            "[CriBinderBindFiles] Unrecognized src_binder_handle: {src_binder_handle:?}",
-        ));
+        debug_print!("[CriBinderBindFiles] Unrecognized src_binder_handle: {src_binder_handle:?}",);
         return unsafe {
             Cri_Binder_Bind_Files.call(
                 binder_handle,
@@ -84,10 +82,10 @@ pub fn hook_impl(
         let new_cstr =
             CString::new(pathbuf.to_string_lossy().as_bytes()).expect("CString conversion failed");
 
-        debug_print(&format!(
+        debug_print!(
             "[CriBinderBindFiles] Replacing {path_str} -> {}",
             pathbuf.display()
-        ));
+        );
 
         return unsafe {
             Cri_Binder_Bind_Files.call(

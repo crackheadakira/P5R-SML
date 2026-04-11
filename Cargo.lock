@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "P5R_SML"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "retour",
+ "winapi",
+ "windows",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -73,16 +83,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "p5r_loader"
-version = "0.1.0"
-dependencies = [
- "once_cell",
- "retour",
- "winapi",
- "windows",
-]
 
 [[package]]
 name = "proc-macro2"

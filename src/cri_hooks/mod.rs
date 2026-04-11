@@ -28,7 +28,7 @@ macro_rules! hook {
     ($fn_type:ty, $detour:ident, $addr:expr, $handler:ident) => {
         let fn_ptr: $fn_type = std::mem::transmute($addr);
         $detour.initialize(fn_ptr, $handler)?.enable()?;
-        debug_print(concat!("[P5 SML] ", stringify!($detour), " enabled"));
+        debug_print!(concat!("[P5R SML] ", stringify!($detour), " enabled"));
     };
 }
 
