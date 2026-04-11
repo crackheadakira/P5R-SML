@@ -6,7 +6,7 @@ use crate::{
     BINDER_COLLECTION, cri_hooks::CriError, debug_print, hook, lock_or_log, pstr_to_string,
 };
 
-const CRI_BINDER_FIND_ADDR: usize = 0x140460868;
+const CRI_BINDER_FIND_ADDR: usize = 0x140461268;
 
 static_detour! {
     static Cri_Binder_Find: unsafe extern "system" fn(HANDLE, PSTR, *mut CriFsBinderFileInfo, *mut INT) -> CriError;
@@ -38,7 +38,7 @@ pub fn hook_impl(
         }
 
         let path_str = pstr_to_string(path);
-        debug_print(&format!("[CriBinderFind] Binder_Find: {path_str}"));
+        debug_print!("[CriBinderFind] path: {path_str}");
 
         let (relative_path, absolute_ptr) = {
             let binder_collection = lock_or_log(&BINDER_COLLECTION, "CriBinderFind, mod_file_arc");
@@ -57,6 +57,11 @@ pub fn hook_impl(
 
             let temp =
                 CString::new(mod_file.relative_path.as_bytes()).expect("CString conversion failed");
+
+            debug_print!(
+                "[CriBinderFind] {path_str} -> modded file ({:?})",
+                mod_file.absolute_path
+            );
 
             (temp, mod_file.absolute_path_cstr.as_ptr())
         };

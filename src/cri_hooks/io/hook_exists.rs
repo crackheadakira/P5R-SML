@@ -36,11 +36,10 @@ pub fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
         let temp_cstr = CString::new(full_path.to_string_lossy().as_bytes())
             .expect("CString conversion failed");
 
-        debug_print(&format!(
-            "[CriIoExists] redirecting {} -> {}",
-            path_str,
+        debug_print!(
+            "[CriIoExists] redirecting {path_str} -> {}",
             full_path.display()
-        ));
+        );
 
         return unsafe { Cri_Io_Exists.call(temp_cstr.as_ptr() as PSTR, result) };
     }

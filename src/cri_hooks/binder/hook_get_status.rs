@@ -67,10 +67,10 @@ impl fmt::Display for CriBinderStatus {
 pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriBinderStatus {
     let res = unsafe { Cri_Binder_Get_Status.call(binder_id, status) };
 
-    debug_print(&format!(
+    debug_print!(
         "[CriBinderGetStatus] binder_id {binder_id:?}, status {}, call_result: {res:?}",
         unsafe { *status }
-    ));
+    );
 
     res
 }

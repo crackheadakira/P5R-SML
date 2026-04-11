@@ -81,9 +81,24 @@ pub mod logging {
         core::PCWSTR,
     };
 
-    /// Prints to DebugView (OutputDebugStringW)
-    pub fn debug_print(msg: &str) {
-        let wide: Vec<u16> = OsStr::new(msg).encode_wide().chain(Some(0)).collect();
+    #[macro_export]
+    macro_rules! _debug_print_impl {
+        ($($arg:tt)*) => {
+            #[cfg(debug_assertions)]
+            {
+                $crate::utils::logging::_debug_print_internal(&format!($($arg)*));
+            }
+        };
+    }
+
+    pub use crate::_debug_print_impl as debug_print;
+
+    #[cfg(debug_assertions)]
+    pub fn _debug_print_internal(msg: &str) {
+        let wide: Vec<u16> = std::ffi::OsStr::new(msg)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
         unsafe {
             OutputDebugStringW(PCWSTR(wide.as_ptr()));
         }

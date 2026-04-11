@@ -35,10 +35,10 @@ pub fn cri_binder_bind_cpk_hook(
     work_size: INT,
     binder_id: *mut DWORD,
 ) -> CriError {
-    debug_print(&format!(
+    debug_print!(
         "[CriBinderBindCpk] binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {}, work: {work:?}, work_size: {work_size}",
         unsafe { pstr_to_string(path) },
-    ));
+    );
 
     let should_bind = {
         let mut binder_collection = lock_or_log(&BINDER_COLLECTION, "CriBinderBindCpk");
@@ -48,9 +48,7 @@ pub fn cri_binder_bind_cpk_hook(
     };
 
     if should_bind {
-        debug_print(&format!(
-            "[HOOK] Setting up binds for handle {binder_handle:?}"
-        ));
+        debug_print!("[CriBinderBindCpk] Setting up binds for handle {binder_handle:?}");
 
         custom_bind_folder(binder_handle, i32::MAX);
     }
@@ -69,9 +67,9 @@ pub fn cri_binder_bind_cpk_hook(
 
 // https://github.com/Sewer56/CriFs.V2.Hook.ReloadedII/blob/8a20e34d7a4a1da1a12ede432a7494040d80f960/CriFs.V2.Hook/Hooks/CpkBinder.cs#L219
 fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
-    debug_print(&format!(
-        "[HOOK BIND FOLDER] Binding mod files, binder_handle: {binder_handle:?}, priority: {priority}"
-    ));
+    debug_print!(
+        "[CriBinderBindCpkFolder] Binding mod files, binder_handle: {binder_handle:?}, priority: {priority}"
+    );
 
     let file_list: Vec<String> = {
         let binder_collection = lock_or_log(&BINDER_COLLECTION, "HookBindFolder, File List");
@@ -99,13 +97,13 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     );
 
     if status != CriError::Success {
-        debug_print(&format!(
-            "[HOOK BIND FOLDER] Could not get get size for bind mod files, status: {status:?}"
-        ));
+        debug_print!(
+            "[CriBinderBindCpkFolder] Could not get get size for bind mod files, status: {status:?}"
+        );
         return;
     }
 
-    debug_print(&format!("[HOOK BIND FOLDER] File size calculated: {size}"));
+    debug_print!("[CriBinderBindCpkFolder] File size calculated: {size}");
 
     let Some(mut alloc) = RawAllocator::new(size as usize) else {
         return;
@@ -125,18 +123,16 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     );
 
     if status != CriError::Success {
-        debug_print(&format!(
-            "[HOOK BIND FOLDER] Binding files failed with {status:?}"
-        ));
+        debug_print!("[CriBinderBindCpkFolder] Binding files failed with {status:?}");
 
         alloc.dispose();
 
         return;
     };
 
-    debug_print(&format!(
-        "[HOOK BIND FOLDER] Bound files with binder_id: {binder_id}, handle: {binder_handle:?}"
-    ));
+    debug_print!(
+        "[CriBinderBindCpkFolder] Bound files with binder_id: {binder_id}, handle: {binder_handle:?}"
+    );
 
     let mut status = CriBinderStatus::None.into();
     loop {
@@ -146,10 +142,10 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
             CriBinderStatus::Complete => {
                 super::hook_set_priority::hook_impl(binder_id, priority);
 
-                debug_print(&format!(
-                    "[HOOK BIND FOLDER] Took {}ms, bound files: {file_list:?}",
+                debug_print!(
+                    "[CriBinderBindCpkFolder] Took {}ms, bound files: {file_list:?}",
                     start.elapsed().as_millis()
-                ));
+                );
 
                 let binder_updates: Vec<(Arc<Mutex<ModFile>>, u32, SafeHandle, i32)> = {
                     let binder_collection =
@@ -186,16 +182,16 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
                         mod_file.work_size = Some(work_size);
                         mod_file.work_handle = Some(alloc.as_ptr());
 
-                        debug_print(&format!(
-                            "[HOOK] Bound mod file: {}\n  binder_id: {}\n  work_size: {}\n  work_handle: {:?}",
+                        debug_print!(
+                            "[CriBinderBindCpkFolder] Bound mod file: {}\n  binder_id: {}\n  work_size: {}\n  work_handle: {:?}",
                             mod_file.absolute_path.display(),
                             binder_id,
                             work_size,
                             alloc.as_ptr().0
-                        ));
+                        );
                     } else {
-                        debug_print(
-                            "[HOOK] Failed to lock mod_file mutex for updating binder_id/handle",
+                        debug_print!(
+                            "[CriBinderBindCpkFolder] Failed to lock mod_file mutex for updating binder_id/handle",
                         );
                     }
                 }
@@ -210,7 +206,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
                 return;
             }
             CriBinderStatus::Error => {
-                debug_print(&format!("[HOOK BIND FOLDER] Binding {binder_id} failed"));
+                debug_print!("[CriBinderBindCpkFolder] Binding {binder_id} failed");
 
                 super::hook_unbind::hook_impl(binder_id);
                 alloc.dispose();
