@@ -48,8 +48,6 @@ unsafe extern "system" fn intercepted_callback(userdata: usize, loader: HANDLE) 
 
         let orig_buf = *(inner.add(0x78) as *const usize) as *mut u8;
         let orig_size = *(inner.add(0x6c) as *const i32) as usize;
-        let outer_buf_ptr = base.add(0x1c8) as *mut u64;
-        let orig_outer_buf = *outer_buf_ptr;
 
         if orig_buf.is_null() || orig_size < 4 {
             return orig_cb(userdata, loader);
@@ -95,7 +93,6 @@ unsafe extern "system" fn intercepted_callback(userdata: usize, loader: HANDLE) 
         };
 
         if let Some(patched) = build_patched_spd(original, &mod_files) {
-            // 1. Allocate using the game's allocator for 16-byte alignment and safe async freeing
             let new_buf = game_alloc(patched.len());
             if new_buf.is_null() {
                 debug_print!("[SpdTick] game_alloc failed for {key}");
@@ -106,39 +103,12 @@ unsafe extern "system" fn intercepted_callback(userdata: usize, loader: HANDLE) 
             let new_ptr = new_buf as u64;
             let new_size = patched.len();
 
-            let old_ptr_val = orig_buf as u64;
-            let old_sz32 = orig_size as u32;
+            let gpu_size_loc = (userdata + USERDATA_SIZE_OFFSET) as *mut u32;
+            let gpu_ptr_loc = (userdata + USERDATA_PTR_OFFSET) as *mut u64;
 
-            *(inner.add(0x78) as *mut u64) = new_ptr;
-            *(inner.add(0x80) as *mut u64) = new_ptr;
-            *(inner.add(0x6c) as *mut i32) = new_size as i32;
-            *outer_buf_ptr = new_ptr;
-
-            if userdata != 0 {
-                let gpu_size_loc = (userdata + USERDATA_SIZE_OFFSET) as *mut u32;
-                let gpu_ptr_loc = (userdata + USERDATA_PTR_OFFSET) as *mut u64;
-
-                if *gpu_size_loc == old_sz32 && *gpu_ptr_loc == old_ptr_val {
-                    *gpu_size_loc = new_size as u32;
-                    *gpu_ptr_loc = new_ptr;
-                    debug_print!("[SpdTick] Performed struct swap for {key}");
-                } else {
-                    debug_print!(
-                        "[SpdTick] WARNING: Shadow offsets did not match expected values for {key}"
-                    );
-                }
-            }
-
-            debug_print!(
-                "[SpdTick] Firing callback with game_alloc buffer ({orig_size} -> {new_size})"
-            );
-
+            *gpu_size_loc = new_size as u32;
+            *gpu_ptr_loc = new_ptr;
             orig_cb(userdata, loader);
-
-            *(inner.add(0x78) as *mut u64) = old_ptr_val;
-            *(inner.add(0x80) as *mut u64) = old_ptr_val;
-            *(inner.add(0x6c) as *mut i32) = orig_size as i32;
-            *outer_buf_ptr = orig_outer_buf;
 
             debug_print!("[SpdTick] Restored CRI pointers. Texture replacement complete for {key}",);
             return;
