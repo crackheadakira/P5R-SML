@@ -15,10 +15,9 @@ use crate::{
     bindings::ModFile,
     cri_hooks::{CriBinderStatus, CriError},
     hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
     utils::{RawAllocator, SafeHandle, logging::debug_print},
 };
-
-const CRI_BINDER_BIND_CPK_ADDR: usize = 0x140460954;
 
 static_detour! {
     static Cri_Binder_Bind_Cpk: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
@@ -219,13 +218,25 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 83 EC 48 48 8B 44 24 78 C7 44 24 30 01 00 00 00 48 89 44 24 28 8B";
+
     unsafe {
-        hook!(
-            FnCriBinderBindCpk,
-            Cri_Binder_Bind_Cpk,
-            CRI_BINDER_BIND_CPK_ADDR,
-            cri_binder_bind_cpk_hook
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderBindCpk at {:#x}", addr_usize);
+
+            hook!(
+                FnCriBinderBindCpk,
+                Cri_Binder_Bind_Cpk,
+                addr_usize,
+                cri_binder_bind_cpk_hook
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriBinderBindCpk").into());
+        }
     }
 
     Ok(())

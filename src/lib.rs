@@ -1,7 +1,11 @@
+#![feature(stmt_expr_attributes)]
+
 use crate::bindings::BinderCollection;
+use crate::scanner::{parse_pattern, patch_memory, scan_main_module};
 use crate::utils::logging::{debug_print, error_message_box};
 use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 use std::ffi::CStr;
 use std::sync::Mutex;
 use winapi::shared::minwindef::{BOOL, DWORD, HINSTANCE, LPVOID, TRUE};
@@ -11,11 +15,69 @@ use winapi::um::winnt::DLL_PROCESS_ATTACH;
 mod bindings;
 mod cri_hooks;
 mod pac;
+pub mod scanner;
 mod spd;
 mod utils;
 
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
     Lazy::new(|| Mutex::new(BinderCollection::new()));
+
+#[derive(Deserialize)]
+struct Config {
+    hooks: Vec<HookConfig>,
+}
+
+#[derive(Deserialize)]
+struct HookConfig {
+    name: String,
+    pattern: String,
+    offset: isize,
+    #[serde(rename = "type")]
+    hook_type: String,
+    patch_bytes: Option<String>,
+}
+
+pub fn initialize_dynamic_hooks() -> Result<(), Box<dyn std::error::Error>> {
+    let base_dir = crate::utils::get_base_dir();
+    let config_path = base_dir.join("SML_Hooks.json");
+
+    let json_str = std::fs::read_to_string(&config_path)?;
+
+    let config: Config = serde_json::from_str(&json_str)?;
+
+    for hook_def in config.hooks {
+        let pattern = parse_pattern(&hook_def.pattern);
+
+        unsafe {
+            if let Some(found_addr) = scan_main_module(&pattern) {
+                let target_addr = found_addr.offset(hook_def.offset);
+
+                debug_print!("[SCANNER] Found {} at {:?}", hook_def.name, target_addr);
+
+                match hook_def.hook_type.as_str() {
+                    "BytePatch" => {
+                        if let Some(bytes_str) = &hook_def.patch_bytes {
+                            let bytes_to_write: Vec<u8> = bytes_str
+                                .split_whitespace()
+                                .filter_map(|b| u8::from_str_radix(b, 16).ok())
+                                .collect();
+
+                            patch_memory(target_addr, &bytes_to_write);
+                        }
+                    }
+                    _ => debug_print!("[SCANNER] Unknown hook type: {}", hook_def.hook_type),
+                }
+            } else {
+                debug_print!(
+                    "[SCANNER] ERROR: Could not find pattern for {}",
+                    hook_def.name
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
 
 /// # Safety
 /// This is the main entry of the .DLL file
@@ -53,6 +115,8 @@ fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
     // Install hooks
     install_hooks()?;
     debug_print!("[P5R SML] All hooks installed successfully");
+
+    initialize_dynamic_hooks()?;
 
     // Get mod files
     let base_directory = get_base_dir();
