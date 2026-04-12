@@ -10,6 +10,7 @@ use winapi::um::winnt::DLL_PROCESS_ATTACH;
 
 mod bindings;
 mod cri_hooks;
+mod pac;
 mod spd;
 mod utils;
 
@@ -74,6 +75,7 @@ fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
             let mod_path = entry.path();
             if mod_path.is_dir() {
                 spd::on_mod_loading(&mod_path);
+                pac::on_mod_loading(&mod_path);
             }
         }
     }

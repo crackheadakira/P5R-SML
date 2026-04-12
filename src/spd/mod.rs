@@ -3,16 +3,16 @@ use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::RwLock,
 };
 
 pub mod hook_spd_tick;
 pub mod spd_builder;
 
-pub static SPD_MODS: Lazy<Mutex<HashMap<String, SpdMod>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+pub static SPD_MODS: Lazy<RwLock<HashMap<String, SpdModFile>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
-pub struct SpdMod {
+pub struct SpdModFile {
     pub dds_files: Vec<PathBuf>,
     pub spdspr_files: Vec<PathBuf>,
 }
@@ -81,8 +81,8 @@ fn register_spd_dir(dir: &Path, key: &str) {
         spdspr_files.len()
     );
 
-    let mut mods = SPD_MODS.lock().unwrap();
-    let entry = mods.entry(key.to_string()).or_insert_with(|| SpdMod {
+    let mut mods = SPD_MODS.write().unwrap();
+    let entry = mods.entry(key.to_string()).or_insert_with(|| SpdModFile {
         dds_files: Vec::new(),
         spdspr_files: Vec::new(),
     });

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::utils::logging::debug_print;
+use crate::{spd::SpdModFile, utils::logging::debug_print};
 
 // Thanks to Amicitia by tge-was-taken & SPD File Emulation by Sewer56
 // I was able to see how they had implemeneted the SPD layout.
@@ -184,18 +184,13 @@ fn parse_sprite_ids(s: &str) -> Vec<i32> {
     ids
 }
 
-pub struct SpdModFiles {
-    pub dds_files: Vec<PathBuf>,
-    pub spdspr_files: Vec<PathBuf>,
-}
-
 /// Build a fully patched SPD from the original bytes and a set of mod files.
 ///
 /// Implements Smart Overwrite: Overwrites textures in-place when safe to keep file size small,
 /// and appends new textures when patching shared atlases to prevent corruption.
 ///
 /// Untouched texture blobs are borrowed directly from `original` (no copy.)
-pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFiles) -> Option<Vec<u8>> {
+pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFile) -> Option<Vec<u8>> {
     let (tex_count, spr_count, tex_offset, spr_offset) = parse_header(original)?;
 
     let mut textures = parse_texture_entries(original, tex_count, tex_offset);

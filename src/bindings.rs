@@ -130,8 +130,7 @@ impl BinderCollection {
                 .unwrap_or("")
                 .to_ascii_uppercase();
 
-            // SPD is handled by the SPD emulator, not the CRI binder.
-            if type_name == "SPD" {
+            if type_name == "SPD" || type_name == "PAK" || type_name == "PAC" {
                 continue;
             }
 
