@@ -12,7 +12,7 @@ mod allocator;
 mod binder;
 mod patcher;
 
-pub use allocator::{RawAllocator, SafeHandle};
+pub use allocator::{CpkBinding, RawAllocator, SafeHandle};
 pub use binder::{BinderCollection, ModFile};
 pub use patcher::apply_vfs_patches;
 pub use patcher::pac::PAC_MODS;

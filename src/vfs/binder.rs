@@ -6,7 +6,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{debug_print, vfs::SafeHandle};
+use crate::{
+    debug_print,
+    vfs::{SafeHandle, allocator::CpkBinding},
+};
 
 pub struct ModFile {
     pub relative_path: String,
@@ -24,6 +27,7 @@ pub struct ModFile {
 
 pub struct BinderCollection {
     pub binder_handles: HashSet<SafeHandle>,
+    pub bindings: Vec<CpkBinding>,
     pub mod_files: HashMap<String, Arc<Mutex<ModFile>>>,
 }
 
@@ -37,6 +41,7 @@ impl BinderCollection {
     pub fn new() -> Self {
         Self {
             binder_handles: HashSet::with_capacity(16),
+            bindings: Vec::new(),
             mod_files: HashMap::new(),
         }
     }

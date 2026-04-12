@@ -11,7 +11,7 @@ use crate::{
     hooks::{CriBinderStatus, CriError},
     scanner::{parse_pattern, scan_main_module},
     utils::{lock_or_log, pstr_to_string},
-    vfs::{ModFile, RawAllocator, SafeHandle},
+    vfs::{CpkBinding, ModFile, RawAllocator, SafeHandle},
 };
 
 static_detour! {
@@ -188,6 +188,13 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
                             "[CriBinderBindCpkFolder] Failed to lock mod_file mutex for updating binder_id/handle",
                         );
                     }
+                }
+
+                {
+                    let mut binder_collection =
+                        lock_or_log(&BINDER_COLLECTION, "HookBindFolder, CPK Binding");
+                    let new_binding = CpkBinding::new(alloc, binder_id, true);
+                    binder_collection.bindings.push(new_binding);
                 }
 
                 return;

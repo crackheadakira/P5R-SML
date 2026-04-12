@@ -52,3 +52,29 @@ impl Drop for RawAllocator {
         self.dispose();
     }
 }
+
+pub struct CpkBinding {
+    alloc: RawAllocator,
+    pub bind_id: u32,
+    pub is_bound: bool,
+}
+
+impl CpkBinding {
+    pub fn new(alloc: RawAllocator, bind_id: u32, is_bound: bool) -> Self {
+        Self {
+            alloc,
+            bind_id,
+            is_bound,
+        }
+    }
+
+    pub fn work_mem_ptr(&self) -> SafeHandle {
+        self.alloc.as_ptr()
+    }
+}
+
+impl Drop for CpkBinding {
+    fn drop(&mut self) {
+        self.alloc.dispose();
+    }
+}
