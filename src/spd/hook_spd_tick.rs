@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use once_cell::sync::Lazy;
 use retour::static_detour;
@@ -11,7 +12,7 @@ use crate::spd::SPD_MODS;
 use crate::spd::spd_builder::build_patched_spd;
 use crate::{hook, utils::logging::debug_print};
 
-const GAME_ALLOC_ADDR: usize = 0x14017bc70;
+static GAME_ALLOC_PTR: AtomicUsize = AtomicUsize::new(0);
 
 const USERDATA_SIZE_OFFSET: usize = 0x88;
 const USERDATA_PTR_OFFSET: usize = 0x98;
@@ -28,8 +29,17 @@ pub static ORIGINAL_CALLBACKS: Lazy<RwLock<HashMap<usize, FnCompletionCallback>>
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 fn game_alloc(size: usize) -> *mut u8 {
+    let addr = GAME_ALLOC_PTR.load(Ordering::SeqCst);
+
+    if addr == 0 {
+        debug_print!("[CRITICAL] game_alloc called before address was scanned!");
+        return unsafe {
+            std::alloc::alloc(std::alloc::Layout::from_size_align(size, 16).unwrap())
+        };
+    }
+
     unsafe {
-        let f: FnGameAlloc = std::mem::transmute(GAME_ALLOC_ADDR);
+        let f: FnGameAlloc = std::mem::transmute(addr);
         f(size)
     }
 }
@@ -220,10 +230,10 @@ fn hook_impl(loader: HANDLE) -> u8 {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
-    let pattern = "48 89 5c 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 ec 20 bd 01 00 00 00 48 8b f9 39 69 1c";
+    let loader_tick_pattern = "48 89 5c 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 ec 20 bd 01 00 00 00 48 8b f9 39 69 1c";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let parsed = parse_pattern(loader_tick_pattern);
 
         if let Some(address) = scan_main_module(&parsed) {
             let addr_usize = address as usize;
@@ -233,6 +243,23 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
             hook!(FnCriLoaderTick, Cri_Loader_Tick, addr_usize, hook_impl);
         } else {
             return Err(format!("Could not find pattern for CriIoLoaderTick").into());
+        }
+    }
+
+    let game_alloc_pattern =
+        "48 89 5c 24 ?? 57 48 83 ec 20 ba 10 00 00 00 48 8b f9 e8 ?? ?? ?? ?? 48 8b d8";
+
+    unsafe {
+        let parsed = parse_pattern(game_alloc_pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found GameAlloc at {:#x}", addr_usize);
+
+            GAME_ALLOC_PTR.store(addr_usize, Ordering::SeqCst);
+        } else {
+            return Err(format!("Could not find pattern for GameAlloc").into());
         }
     }
 

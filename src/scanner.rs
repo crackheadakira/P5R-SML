@@ -25,7 +25,6 @@ pub fn parse_pattern(signature: &str) -> Vec<Option<u8>> {
 
 pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
     let module = unsafe { GetModuleHandleW(None).ok() }?;
-
     let mut module_info = MODULEINFO::default();
     let process = unsafe { GetCurrentProcess() };
 
@@ -41,26 +40,49 @@ pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
 
     let base_addr = module_info.lpBaseOfDll as *const u8;
     let size = module_info.SizeOfImage as usize;
-
     let memory_slice = unsafe { std::slice::from_raw_parts(base_addr, size) };
 
-    for i in 0..(size - pattern.len()) {
-        let mut found = true;
-        for (j, &sig_byte) in pattern.iter().enumerate() {
-            if let Some(b) = sig_byte
-                && memory_slice[i + j] != b
-            {
-                found = false;
+    // OPTIMIZATION 1: Extract the first byte to search for
+    let (first_byte_idx, first_byte_val) = pattern
+        .iter()
+        .enumerate()
+        .find_map(|(i, &b)| b.map(|val| (i, val)))?;
+
+    let mut current_pos = 0;
+    let search_limit = size - pattern.len();
+
+    while current_pos <= search_limit {
+        let remaining_mem = &memory_slice[current_pos..];
+        if let Some(hit) = remaining_mem.iter().position(|&b| b == first_byte_val) {
+            let start_index = current_pos + hit - first_byte_idx;
+
+            if start_index + pattern.len() > size {
                 break;
             }
-        }
 
-        if found {
-            return Some(unsafe { base_addr.add(i) } as *mut u8);
+            if is_match(&memory_slice[start_index..], pattern) {
+                return Some(unsafe { base_addr.add(start_index) } as *mut u8);
+            }
+
+            current_pos += hit + 1;
+        } else {
+            break;
         }
     }
 
     None
+}
+
+#[inline(always)]
+fn is_match(data: &[u8], pattern: &[Option<u8>]) -> bool {
+    for (i, &sig_byte) in pattern.iter().enumerate() {
+        if let Some(b) = sig_byte {
+            if data[i] != b {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 pub unsafe fn patch_memory(target_addr: *mut u8, patch_bytes: &[u8]) {
