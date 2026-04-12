@@ -1,9 +1,12 @@
 use std::os::windows::raw::HANDLE;
 
-use crate::{
-    utils::pstr_to_string,
-    vfs::{pac::patch_pac, spd::patch_spd},
-};
+use crate::utils::pstr_to_string;
+
+pub mod pac;
+pub mod spd;
+
+use pac::patch_pac;
+use spd::patch_spd;
 
 pub unsafe fn apply_vfs_patches(loader: HANDLE, userdata: usize) {
     let base = loader as *mut u8;

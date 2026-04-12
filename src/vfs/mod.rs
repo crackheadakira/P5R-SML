@@ -10,15 +10,13 @@ use windows::{Win32::System::LibraryLoader::GetModuleHandleA, core::PCSTR};
 
 mod allocator;
 mod binder;
-mod pac;
 mod patcher;
-mod spd;
 
 pub use allocator::{RawAllocator, SafeHandle};
 pub use binder::{BinderCollection, ModFile};
-pub use pac::PAC_MODS;
 pub use patcher::apply_vfs_patches;
-pub use spd::SPD_MODS;
+pub use patcher::pac::PAC_MODS;
+pub use patcher::spd::SPD_MODS;
 
 type FnGameAlloc = unsafe extern "system" fn(usize) -> *mut u8;
 
