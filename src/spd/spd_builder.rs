@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::PathBuf,
 };
 
 use crate::{spd::SpdModFile, utils::logging::debug_print};

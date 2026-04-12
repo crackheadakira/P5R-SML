@@ -258,8 +258,6 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
             debug_print!("[SCANNER] Found GameAlloc at {:#x}", addr_usize);
 
             GAME_ALLOC_PTR.store(addr_usize, Ordering::SeqCst);
-        } else {
-            return Err(format!("Could not find pattern for GameAlloc").into());
         }
     }
 

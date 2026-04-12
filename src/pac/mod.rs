@@ -40,7 +40,7 @@ fn walk_pac_dirs(dir: &Path) {
             .unwrap_or("")
             .to_ascii_lowercase();
 
-        if name.ends_with(".pac") || name.ends_with(".pak") {
+        if name.ends_with(".pac") || name.ends_with(".pak") || name.ends_with(".bin") {
             register_pac_dir(&path, &name);
         } else {
             walk_pac_dirs(&path);
