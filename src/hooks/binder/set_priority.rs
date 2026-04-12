@@ -1,10 +1,9 @@
 use retour::static_detour;
 
 use crate::{
-    cri_hooks::CriError,
-    hook,
+    debug_print, hook,
+    hooks::CriError,
     scanner::{parse_pattern, scan_main_module},
-    utils::logging::debug_print,
 };
 
 static_detour! {
@@ -12,12 +11,12 @@ static_detour! {
 }
 type FnCriBinderSetPriority = unsafe extern "system" fn(u32, i32) -> CriError;
 
-pub fn hook_impl(binder_id: u32, priority: i32) -> CriError {
+pub fn cri_binder_set_priority_hook(binder_id: u32, priority: i32) -> CriError {
     debug_print!("[CriBinderSetPriority] binder_id: {binder_id}, priority: {priority}");
     unsafe { Cri_Binder_Set_Priority.call(binder_id, priority) }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_set_priority_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 ?? ?? ?? ?? 48 8B D8 48 85 C0 75 18";
 
     unsafe {
@@ -32,7 +31,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 FnCriBinderSetPriority,
                 Cri_Binder_Set_Priority,
                 addr_usize,
-                hook_impl
+                cri_binder_set_priority_hook
             );
         } else {
             return Err("Could not find pattern for CriBinderSetPriority".into());

@@ -1,14 +1,12 @@
-use crate::{
-    CpkBinding,
-    utils::{SafeHandle, logging::debug_print},
-};
 use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
-    fs::{self},
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+
+use crate::{debug_print, vfs::SafeHandle};
 
 pub struct ModFile {
     pub relative_path: String,
@@ -26,7 +24,6 @@ pub struct ModFile {
 
 pub struct BinderCollection {
     pub binder_handles: HashSet<SafeHandle>,
-    pub bindings: Vec<CpkBinding>,
     pub mod_files: HashMap<String, Arc<Mutex<ModFile>>>,
 }
 
@@ -40,7 +37,6 @@ impl BinderCollection {
     pub fn new() -> Self {
         Self {
             binder_handles: HashSet::with_capacity(16),
-            bindings: Vec::new(),
             mod_files: HashMap::new(),
         }
     }
@@ -90,24 +86,6 @@ impl BinderCollection {
         target_path: &str,
     ) -> Option<&Arc<Mutex<ModFile>>> {
         self.mod_files.get(&Self::normalize_path(target_path))
-    }
-
-    pub fn file_is_mod(&self, target_path: &str) -> bool {
-        self.mod_files
-            .contains_key(&Self::normalize_path(target_path))
-    }
-
-    pub fn get_handle_for_path(&self, path: &str) -> Option<SafeHandle> {
-        if let Some(mod_file_arc) = self.mod_files.get(&Self::normalize_path(path))
-            && let Ok(mod_file) = mod_file_arc.lock()
-        {
-            for binding in &self.bindings {
-                if binding.bind_id == mod_file.binder_id {
-                    return Some(binding.work_mem_ptr());
-                }
-            }
-        }
-        None
     }
 
     /// Walks `FEmulator/<type>/...` — drops the first component (e.g. "SPD",

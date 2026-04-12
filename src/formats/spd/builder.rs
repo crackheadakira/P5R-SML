@@ -3,7 +3,8 @@ use std::{
     fs,
 };
 
-use crate::{spd::SpdModFile, utils::logging::debug_print};
+use super::SpdModFile;
+use crate::debug_print;
 
 // Thanks to Amicitia by tge-was-taken & SPD File Emulation by Sewer56
 // I was able to see how they had implemeneted the SPD layout.

@@ -1,16 +1,7 @@
-use crate::debug_print;
-use once_cell::sync::Lazy;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::RwLock,
-};
+use crate::{debug_print, vfs::SPD_MODS};
+use std::path::{Path, PathBuf};
 
-pub mod hook_spd_tick;
-pub mod spd_builder;
-
-pub static SPD_MODS: Lazy<RwLock<HashMap<String, SpdModFile>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+pub mod builder;
 
 pub struct SpdModFile {
     pub dds_files: Vec<PathBuf>,

@@ -1,3 +1,4 @@
+use retour::static_detour;
 use std::{
     collections::HashSet,
     ffi::CString,
@@ -5,15 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use retour::static_detour;
-
 use crate::{
-    BINDER_COLLECTION, CpkBinding,
-    bindings::ModFile,
-    cri_hooks::{CriBinderStatus, CriError},
-    hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, debug_print, hook,
+    hooks::{CriBinderStatus, CriError},
     scanner::{parse_pattern, scan_main_module},
-    utils::{RawAllocator, SafeHandle, logging::debug_print},
+    utils::{lock_or_log, pstr_to_string},
+    vfs::{ModFile, RawAllocator, SafeHandle},
 };
 
 static_detour! {
@@ -86,7 +84,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     let file_list_str =
         CString::new(file_list.join("\n")).expect("Error converting mod file list into CString");
 
-    let status = super::hook_get_size_for_bind_files::cri_binder_get_size_for_bind_files_hook(
+    let status = super::get_size_for_bind_files::cri_binder_get_size_for_bind_files_hook(
         binder_handle,
         file_list_str.as_ptr() as *mut u8,
         &mut size,
@@ -109,7 +107,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
 
     let mut binder_id = 0;
 
-    let status = super::hook_bind_files::hook_impl(
+    let status = super::cri_binder_bind_files_hook(
         binder_handle,
         std::ptr::null_mut(),
         file_list_str.as_ptr() as *mut u8,
@@ -132,11 +130,11 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
 
     let mut status = CriBinderStatus::None.into();
     loop {
-        super::hook_get_status::hook_impl(binder_id, &mut status);
+        super::cri_binder_get_status_hook(binder_id, &mut status);
 
         match status.into() {
             CriBinderStatus::Complete => {
-                super::hook_set_priority::hook_impl(binder_id, priority);
+                super::cri_binder_set_priority_hook(binder_id, priority);
 
                 debug_print!(
                     "[CriBinderBindCpkFolder] Took {}ms, bound files: {file_list:?}",
@@ -192,19 +190,12 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
                     }
                 }
 
-                {
-                    let mut binder_collection =
-                        lock_or_log(&BINDER_COLLECTION, "HookBindFolder, CPK Binding");
-                    let new_binding = CpkBinding::new(alloc, binder_id, true);
-                    binder_collection.bindings.push(new_binding);
-                }
-
                 return;
             }
             CriBinderStatus::Error => {
                 debug_print!("[CriBinderBindCpkFolder] Binding {binder_id} failed");
 
-                super::hook_unbind::hook_impl(binder_id);
+                super::cri_binder_unbind_hook(binder_id);
                 alloc.dispose();
 
                 return;
@@ -214,7 +205,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_bind_cpk_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 83 EC 48 48 8B 44 24 78 C7 44 24 30 01 00 00 00 48 89 44 24 28 8B";
 
     unsafe {

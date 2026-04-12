@@ -1,56 +1,17 @@
-use std::collections::HashMap;
-use std::os::windows::raw::HANDLE;
-use std::sync::RwLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use once_cell::sync::Lazy;
 use retour::static_detour;
+use std::os::windows::raw::HANDLE;
+use std::sync::atomic::Ordering;
 
 use crate::scanner::{parse_pattern, scan_main_module};
-use crate::vfs::apply_vfs_patches;
-use crate::{CURRENT_GAME, TargetGame};
-use crate::{hook, utils::logging::debug_print};
-
-static GAME_ALLOC_PTR: AtomicUsize = AtomicUsize::new(0);
+use crate::vfs::{CURRENT_GAME, GAME_ALLOC_PTR, ORIGINAL_CALLBACKS, TargetGame, apply_vfs_patches};
+use crate::{debug_print, hook};
 
 static_detour! {
     static Cri_Loader_Tick: unsafe extern "system" fn(HANDLE) -> u8;
 }
 
 type FnCriLoaderTick = unsafe extern "system" fn(HANDLE) -> u8;
-type FnGameAlloc = unsafe extern "system" fn(usize) -> *mut u8;
 type FnCompletionCallback = unsafe extern "system" fn(usize, HANDLE);
-
-pub static ORIGINAL_CALLBACKS: Lazy<RwLock<HashMap<usize, usize>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
-
-unsafe extern "C" {
-    fn _aligned_malloc(size: usize, alignment: usize) -> *mut u8;
-}
-
-pub fn game_alloc(size: usize) -> *mut u8 {
-    let addr = GAME_ALLOC_PTR.load(Ordering::SeqCst);
-
-    if addr != 0 {
-        unsafe {
-            let f: FnGameAlloc = std::mem::transmute(addr);
-            return f(size);
-        }
-    }
-
-    unsafe {
-        let ptr = _aligned_malloc(size, 16);
-
-        if ptr.is_null() {
-            crate::utils::logging::debug_print!(
-                "[CRITICAL] _aligned_malloc failed to allocate {} bytes",
-                size
-            );
-        }
-
-        ptr
-    }
-}
 
 pub unsafe extern "system" fn intercepted_callback(userdata: usize, loader: HANDLE) {
     let orig_cb = {
@@ -125,7 +86,7 @@ fn p4g_hook_tick(loader: HANDLE) -> u8 {
     result
 }
 
-fn hook_impl(loader: HANDLE) -> u8 {
+fn cri_loader_tick_hook(loader: HANDLE) -> u8 {
     match *CURRENT_GAME {
         TargetGame::P5R => p5r_hook_tick(loader),
         TargetGame::P4G => p4g_hook_tick(loader),
@@ -133,7 +94,7 @@ fn hook_impl(loader: HANDLE) -> u8 {
     }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_loader_tick_hook() -> Result<(), Box<dyn std::error::Error>> {
     let loader_tick_pattern = "48 89 5c 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 ec 20 bd 01 00 00 00 48 8b f9 39 69 1c";
 
     unsafe {
@@ -144,7 +105,12 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             debug_print!("[SCANNER] Found CriIoLoaderTick at {:#x}", addr_usize);
 
-            hook!(FnCriLoaderTick, Cri_Loader_Tick, addr_usize, hook_impl);
+            hook!(
+                FnCriLoaderTick,
+                Cri_Loader_Tick,
+                addr_usize,
+                cri_loader_tick_hook
+            );
         } else {
             return Err("Could not find pattern for CriIoLoaderTick".into());
         }

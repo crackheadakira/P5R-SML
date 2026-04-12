@@ -3,9 +3,9 @@ use std::ffi::CString;
 use std::os::windows::raw::HANDLE;
 
 use crate::{
-    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, debug_print, hook,
     scanner::{parse_pattern, scan_main_module},
-    utils::logging::debug_print,
+    utils::{lock_or_log, pstr_to_string},
 };
 
 static_detour! {
@@ -14,7 +14,7 @@ static_detour! {
 
 type FnCriIoExists = unsafe extern "system" fn(*mut u8, *mut i32) -> HANDLE;
 
-pub fn hook_impl(string_ptr: *mut u8, result: *mut i32) -> HANDLE {
+pub fn cri_io_exists_hook(string_ptr: *mut u8, result: *mut i32) -> HANDLE {
     if string_ptr.is_null() {
         return unsafe { Cri_Io_Exists.call(string_ptr, result) };
     }
@@ -49,7 +49,7 @@ pub fn hook_impl(string_ptr: *mut u8, result: *mut i32) -> HANDLE {
     unsafe { Cri_Io_Exists.call(string_ptr, result) }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_io_exists_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 18 57 48 81 EC 70 08";
 
     unsafe {
@@ -60,7 +60,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             debug_print!("[SCANNER] Found CriIoExists at {:#x}", addr_usize);
 
-            hook!(FnCriIoExists, Cri_Io_Exists, addr_usize, hook_impl);
+            hook!(FnCriIoExists, Cri_Io_Exists, addr_usize, cri_io_exists_hook);
         } else {
             return Err("Could not find pattern for CriIoExists".into());
         }

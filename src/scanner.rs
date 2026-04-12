@@ -7,7 +7,7 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::ProcessStatus::{GetModuleInformation, MODULEINFO};
 use windows::Win32::System::Threading::GetCurrentProcess;
 
-use crate::utils::logging::debug_print;
+use crate::debug_print;
 
 /// Converts "E8 ?? ?? 48" into [Some(0xE8), None, None, Some(0x48)]
 pub fn parse_pattern(signature: &str) -> Vec<Option<u8>> {

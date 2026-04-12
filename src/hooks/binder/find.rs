@@ -2,10 +2,10 @@ use retour::static_detour;
 use std::{ffi::CString, os::windows::raw::HANDLE};
 
 use crate::{
-    BINDER_COLLECTION,
-    cri_hooks::CriError,
-    debug_print, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, debug_print, hook,
+    hooks::CriError,
     scanner::{parse_pattern, scan_main_module},
+    utils::{lock_or_log, pstr_to_string},
 };
 
 static_detour! {
@@ -26,7 +26,7 @@ pub struct CriFsBinderFileInfo {
     pub reserved: u32,
 }
 
-pub fn hook_impl(
+pub fn cri_binder_find_hook(
     binder_handle: HANDLE,
     path: *mut u8,
     file_info: *mut CriFsBinderFileInfo,
@@ -87,7 +87,7 @@ pub fn hook_impl(
     }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_find_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern =
         "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 40 49 8B F9 49 8B D8 48";
 
@@ -99,7 +99,12 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             debug_print!("[SCANNER] Found CriBinderFind at {:#x}", addr_usize);
 
-            hook!(FnCriBinderFind, Cri_Binder_Find, addr_usize, hook_impl);
+            hook!(
+                FnCriBinderFind,
+                Cri_Binder_Find,
+                addr_usize,
+                cri_binder_find_hook
+            );
         } else {
             return Err("Could not find pattern for CriBinderFind".into());
         }

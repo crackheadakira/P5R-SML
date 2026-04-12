@@ -1,8 +1,8 @@
 use crate::{
-    cri_hooks::CriError,
-    hook, pstr_to_string,
+    debug_print, hook,
+    hooks::CriError,
     scanner::{parse_pattern, scan_main_module},
-    utils::logging::debug_print,
+    utils::pstr_to_string,
 };
 use retour::static_detour;
 use std::os::windows::raw::HANDLE;
@@ -31,7 +31,7 @@ pub fn cri_binder_get_size_for_bind_files_hook(
     status
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_get_size_for_bind_files_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 08 48 89 74 24 20 57 48 81 EC 50";
 
     unsafe {

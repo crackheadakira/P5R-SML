@@ -1,28 +1,7 @@
-use crate::utils::logging::debug_print;
+use crate::debug_print;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum PacVersion {
-    Version1,
-    Version2,
-    Version2BE,
-    Version3,
-    Version3BE,
-    Unknown,
-}
-
-#[derive(Clone)]
-struct PacEntry {
-    name: String,
-    original_offset: usize,
-    original_size: usize,
-}
-
-#[derive(Clone, Debug)]
-pub struct PacModFiles {
-    pub replacements: HashMap<String, PathBuf>,
-}
+use super::{PacEntry, PacModFiles, PacVersion};
 
 fn align_64(val: usize) -> usize {
     (val + 63) & !63

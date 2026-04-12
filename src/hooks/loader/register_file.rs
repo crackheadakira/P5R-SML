@@ -3,10 +3,10 @@ use std::os::windows::raw::HANDLE;
 use retour::static_detour;
 
 use crate::{
-    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, debug_print, hook,
     scanner::{parse_pattern, scan_main_module},
-    spd::hook_spd_tick::ORIGINAL_CALLBACKS,
-    utils::logging::debug_print,
+    utils::{lock_or_log, pstr_to_string},
+    vfs::ORIGINAL_CALLBACKS,
 };
 
 static_detour! {
@@ -16,7 +16,7 @@ static_detour! {
 type FnCriLoaderRegisterFile =
     unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, i32, HANDLE) -> HANDLE;
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_register_file_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 8B C4 48 89 58 08 48 89 70 10 4C";
 
     unsafe {

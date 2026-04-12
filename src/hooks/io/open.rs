@@ -3,9 +3,9 @@ use std::ffi::CString;
 use std::os::windows::raw::HANDLE;
 
 use crate::{
-    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, debug_print, hook,
     scanner::{parse_pattern, scan_main_module},
-    utils::logging::debug_print,
+    utils::{lock_or_log, pstr_to_string},
 };
 
 static_detour! {
@@ -14,7 +14,7 @@ static_detour! {
 
 type FnCriIoOpen = unsafe extern "system" fn(*mut u8, i32, i32, *mut HANDLE) -> HANDLE;
 
-pub fn hook_impl(
+pub fn cri_io_open_hook(
     string_ptr: *mut u8,
     file_creation_type: i32,
     desired_access: i32,
@@ -64,7 +64,7 @@ pub fn hook_impl(
     unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) }
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_io_open_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern =
         "48 8B C4 48 89 58 10 48 89 68 18 48 89 70 20 57 41 54 41 55 41 56 41 57 48 83 EC 50";
 
@@ -76,7 +76,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             debug_print!("[SCANNER] Found CriIoOpen at {:#x}", addr_usize);
 
-            hook!(FnCriIoOpen, Cri_Io_Open, addr_usize, hook_impl);
+            hook!(FnCriIoOpen, Cri_Io_Open, addr_usize, cri_io_open_hook);
         } else {
             return Err("Could not find pattern for CriIoOpen".into());
         }

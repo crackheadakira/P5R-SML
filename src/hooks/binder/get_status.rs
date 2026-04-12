@@ -3,9 +3,8 @@ use std::fmt;
 use retour::static_detour;
 
 use crate::{
-    hook,
+    debug_print, hook,
     scanner::{parse_pattern, scan_main_module},
-    utils::logging::debug_print,
 };
 
 static_detour! {
@@ -65,7 +64,7 @@ impl fmt::Display for CriBinderStatus {
     }
 }
 
-pub fn hook_impl(binder_id: u32, status: *mut i32) -> CriBinderStatus {
+pub fn cri_binder_get_status_hook(binder_id: u32, status: *mut i32) -> CriBinderStatus {
     let res = unsafe { Cri_Binder_Get_Status.call(binder_id, status) };
 
     debug_print!(
@@ -76,7 +75,7 @@ pub fn hook_impl(binder_id: u32, status: *mut i32) -> CriBinderStatus {
     res
 }
 
-pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_get_status_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 08 57 48 83 EC 20 48 8B DA 8B F9 85";
 
     unsafe {
@@ -91,7 +90,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 FnCriBinderGetStatus,
                 Cri_Binder_Get_Status,
                 addr_usize,
-                hook_impl
+                cri_binder_get_status_hook
             );
         } else {
             return Err("Could not find pattern for CriBinderGetStatus".into());

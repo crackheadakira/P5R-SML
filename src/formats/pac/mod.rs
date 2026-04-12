@@ -1,15 +1,31 @@
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 
-pub mod pac_builder;
+pub mod builder;
 
-use crate::pac::pac_builder::PacModFiles;
-use crate::utils::logging::debug_print;
+use crate::{debug_print, vfs::PAC_MODS};
 
-pub static PAC_MODS: Lazy<RwLock<HashMap<String, PacModFiles>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PacVersion {
+    Version1,
+    Version2,
+    Version2BE,
+    Version3,
+    Version3BE,
+    Unknown,
+}
+
+#[derive(Clone)]
+struct PacEntry {
+    name: String,
+    original_offset: usize,
+    original_size: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct PacModFiles {
+    pub replacements: HashMap<String, PathBuf>,
+}
 
 pub fn on_mod_loading(mod_folder: &Path) {
     let redirector_pak = mod_folder.join("FEmulator/PAK");
