@@ -4,6 +4,7 @@ use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 use crate::{
     BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
     scanner::{parse_pattern, scan_main_module},
+    spd::hook_spd_tick::ORIGINAL_CALLBACKS,
     utils::logging::debug_print,
 };
 
@@ -85,5 +86,12 @@ fn cri_loader_register_file_hook(
         };
     }
 
-    unsafe { CriLoader_Register_File.call(loader, binder, path, file_id, zero) }
+    let result = unsafe { CriLoader_Register_File.call(loader, binder, path, file_id, zero) };
+
+    ORIGINAL_CALLBACKS
+        .write()
+        .unwrap()
+        .insert(loader as usize, 0);
+
+    result
 }

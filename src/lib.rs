@@ -18,6 +18,28 @@ mod pac;
 pub mod scanner;
 mod spd;
 mod utils;
+pub mod vfs;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetGame {
+    P5R,
+    P4G,
+    Unknown,
+}
+
+pub static CURRENT_GAME: Lazy<TargetGame> = Lazy::new(|| unsafe {
+    if winapi::um::libloaderapi::GetModuleHandleA(b"P5R.exe\0".as_ptr() as *const i8)
+        != std::ptr::null_mut()
+    {
+        TargetGame::P5R
+    } else if winapi::um::libloaderapi::GetModuleHandleA(b"P4G.exe\0".as_ptr() as *const i8)
+        != std::ptr::null_mut()
+    {
+        TargetGame::P4G
+    } else {
+        TargetGame::Unknown
+    }
+});
 
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
     Lazy::new(|| Mutex::new(BinderCollection::new()));
