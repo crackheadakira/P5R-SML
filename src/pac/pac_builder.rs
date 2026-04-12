@@ -37,11 +37,13 @@ fn is_valid_v1(data: &[u8]) -> bool {
     }
 
     let mut name_terminated = false;
-    for i in 0..252 {
-        if data[i] == 0x00 {
+
+    for item in data.iter().take(252) {
+        if *item == 0x00 {
             name_terminated = true;
         }
-        if data[i] != 0x00 && name_terminated {
+
+        if *item != 0x00 && name_terminated {
             return false;
         }
     }
@@ -225,18 +227,18 @@ pub fn build_patched_pac(original: &[u8], mod_files: &PacModFiles) -> Option<Vec
         let search_name = entry.name.to_ascii_lowercase();
         let mut is_modded = false;
 
-        if let Some(mod_path) = mod_files.replacements.get(&search_name) {
-            if let Ok(mod_data) = std::fs::read(mod_path) {
-                debug_print!("[PAC] Replacing inner file: {}", entry.name);
-                let actual_data_size = if version == PacVersion::Version1 {
-                    align_64(mod_data.len())
-                } else {
-                    mod_data.len()
-                };
-                total_size += entry_size + actual_data_size;
-                new_blobs.insert(i, mod_data);
-                is_modded = true;
-            }
+        if let Some(mod_path) = mod_files.replacements.get(&search_name)
+            && let Ok(mod_data) = std::fs::read(mod_path)
+        {
+            debug_print!("[PAC] Replacing inner file: {}", entry.name);
+            let actual_data_size = if version == PacVersion::Version1 {
+                align_64(mod_data.len())
+            } else {
+                mod_data.len()
+            };
+            total_size += entry_size + actual_data_size;
+            new_blobs.insert(i, mod_data);
+            is_modded = true;
         }
 
         if !is_modded {

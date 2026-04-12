@@ -1,6 +1,5 @@
 use retour::static_detour;
-use std::ffi::CString;
-use winapi::shared::ntdef::{HANDLE, INT, PSTR};
+use std::{ffi::CString, os::windows::raw::HANDLE};
 
 use crate::{
     BINDER_COLLECTION,
@@ -10,16 +9,16 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Find: unsafe extern "system" fn(HANDLE, PSTR, *mut CriFsBinderFileInfo, *mut INT) -> CriError;
+    static Cri_Binder_Find: unsafe extern "system" fn(HANDLE, *mut u8, *mut CriFsBinderFileInfo, *mut i32) -> CriError;
 }
 
 type FnCriBinderFind =
-    unsafe extern "system" fn(HANDLE, PSTR, *mut CriFsBinderFileInfo, *mut INT) -> CriError;
+    unsafe extern "system" fn(HANDLE, *mut u8, *mut CriFsBinderFileInfo, *mut i32) -> CriError;
 
 #[repr(C)]
 pub struct CriFsBinderFileInfo {
     pub file_handle: HANDLE,
-    pub path: PSTR,
+    pub path: *mut u8,
     pub offset: i64,
     pub compressed_size: i64,
     pub decompressed_size: i64,
@@ -29,9 +28,9 @@ pub struct CriFsBinderFileInfo {
 
 pub fn hook_impl(
     binder_handle: HANDLE,
-    path: PSTR,
+    path: *mut u8,
     file_info: *mut CriFsBinderFileInfo,
-    exist: *mut INT,
+    exist: *mut i32,
 ) -> CriError {
     unsafe {
         if path.is_null() {
@@ -67,11 +66,11 @@ pub fn hook_impl(
             (temp, mod_file.absolute_path_cstr.as_ptr())
         };
 
-        let mut new_exist: INT = 0;
+        let mut new_exist = 0;
 
         let result = Cri_Binder_Find.call(
             binder_handle,
-            relative_path.as_ptr() as PSTR,
+            relative_path.as_ptr() as *mut u8,
             file_info,
             &mut new_exist,
         );
@@ -81,7 +80,7 @@ pub fn hook_impl(
         }
 
         if !file_info.is_null() {
-            (*file_info).path = absolute_ptr as PSTR;
+            (*file_info).path = absolute_ptr as *mut u8;
         }
 
         result
@@ -102,7 +101,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             hook!(FnCriBinderFind, Cri_Binder_Find, addr_usize, hook_impl);
         } else {
-            return Err(format!("Could not find pattern for CriBinderFind").into());
+            return Err("Could not find pattern for CriBinderFind".into());
         }
     }
 

@@ -1,4 +1,4 @@
-use winapi::shared::ntdef::HANDLE;
+use std::os::windows::raw::HANDLE;
 
 use crate::{
     pac::PAC_MODS,
@@ -30,7 +30,7 @@ pub unsafe fn apply_vfs_patches(loader: HANDLE, userdata: usize) {
         return;
     }
 
-    let path_str = unsafe { pstr_to_string(path_ptr as winapi::shared::ntdef::PSTR) };
+    let path_str = unsafe { pstr_to_string(path_ptr) };
     let normalized_path = path_str.replace('\\', "/");
     let key = std::path::Path::new(&normalized_path)
         .file_name()

@@ -1,11 +1,7 @@
-use std::{env, path::PathBuf};
+use std::{env, os::windows::raw::HANDLE, path::PathBuf};
 
-use winapi::{
-    shared::ntdef::HANDLE,
-    um::{
-        memoryapi::{VirtualAlloc, VirtualFree},
-        winnt::{MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE},
-    },
+use windows::Win32::System::Memory::{
+    MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAlloc, VirtualFree,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,12 +28,7 @@ unsafe impl Sync for RawAllocator {}
 impl RawAllocator {
     pub fn new(size: usize) -> Option<Self> {
         unsafe {
-            let ptr = VirtualAlloc(
-                std::ptr::null_mut(),
-                size,
-                MEM_COMMIT | MEM_RESERVE,
-                PAGE_READWRITE,
-            );
+            let ptr = VirtualAlloc(None, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
             if ptr.is_null() {
                 None
@@ -56,7 +47,7 @@ impl RawAllocator {
     pub fn dispose(&mut self) {
         unsafe {
             if !self.ptr.0.is_null() {
-                VirtualFree(self.ptr.0, 0, MEM_RELEASE);
+                let _ = VirtualFree(self.ptr.0, 0, MEM_RELEASE);
                 self.ptr = SafeHandle(std::ptr::null_mut());
             }
         }

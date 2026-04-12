@@ -1,7 +1,6 @@
 use std::fmt;
 
 use retour::static_detour;
-use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
 use crate::{
     hook,
@@ -10,10 +9,10 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Get_Status: unsafe extern "system" fn(DWORD, *mut INT) -> CriBinderStatus;
+    static Cri_Binder_Get_Status: unsafe extern "system" fn(u32, *mut i32) -> CriBinderStatus;
 }
 
-type FnCriBinderGetStatus = unsafe extern "system" fn(DWORD, *mut INT) -> CriBinderStatus;
+type FnCriBinderGetStatus = unsafe extern "system" fn(u32, *mut i32) -> CriBinderStatus;
 
 #[repr(i32)]
 #[derive(Debug)]
@@ -29,8 +28,8 @@ pub enum CriBinderStatus {
     Unknown,
 }
 
-impl From<INT> for CriBinderStatus {
-    fn from(value: INT) -> Self {
+impl From<i32> for CriBinderStatus {
+    fn from(value: i32) -> Self {
         match value {
             0 => CriBinderStatus::None,
             1 => CriBinderStatus::Analyze,
@@ -44,9 +43,9 @@ impl From<INT> for CriBinderStatus {
     }
 }
 
-impl From<CriBinderStatus> for INT {
+impl From<CriBinderStatus> for i32 {
     fn from(err: CriBinderStatus) -> Self {
-        err as INT
+        err as i32
     }
 }
 
@@ -66,7 +65,7 @@ impl fmt::Display for CriBinderStatus {
     }
 }
 
-pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriBinderStatus {
+pub fn hook_impl(binder_id: u32, status: *mut i32) -> CriBinderStatus {
     let res = unsafe { Cri_Binder_Get_Status.call(binder_id, status) };
 
     debug_print!(
@@ -95,7 +94,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 hook_impl
             );
         } else {
-            return Err(format!("Could not find pattern for CriBinderGetStatus").into());
+            return Err("Could not find pattern for CriBinderGetStatus".into());
         }
     }
 

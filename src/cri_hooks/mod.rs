@@ -1,5 +1,3 @@
-use winapi::shared::ntdef::INT;
-
 pub mod binder {
     pub mod hook_bind_cpk;
     pub mod hook_bind_file;
@@ -60,8 +58,8 @@ pub enum CriError {
     Unknown = -7,
 }
 
-impl From<INT> for CriError {
-    fn from(value: INT) -> Self {
+impl From<i32> for CriError {
+    fn from(value: i32) -> Self {
         match value {
             0 => CriError::Success,
             -1 => CriError::Failure,
@@ -75,8 +73,8 @@ impl From<INT> for CriError {
     }
 }
 
-impl From<CriError> for INT {
+impl From<CriError> for i32 {
     fn from(err: CriError) -> Self {
-        err as INT
+        err as i32
     }
 }

@@ -9,7 +9,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use winapi::shared::minwindef::DWORD;
 
 pub struct ModFile {
     pub relative_path: String,
@@ -21,7 +20,7 @@ pub struct ModFile {
     pub handle: Option<SafeHandle>,
     pub work_handle: Option<SafeHandle>,
     pub work_size: Option<i32>,
-    pub binder_id: DWORD,
+    pub binder_id: u32,
     pub is_bound: bool,
 }
 

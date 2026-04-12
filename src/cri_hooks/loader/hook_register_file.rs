@@ -1,5 +1,6 @@
+use std::os::windows::raw::HANDLE;
+
 use retour::static_detour;
-use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
 use crate::{
     BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
@@ -9,11 +10,11 @@ use crate::{
 };
 
 static_detour! {
-    static CriLoader_Register_File: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, INT, HANDLE) -> HANDLE;
+    static CriLoader_Register_File: unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, i32, HANDLE) -> HANDLE;
 }
 
 type FnCriLoaderRegisterFile =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, INT, HANDLE) -> HANDLE;
+    unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, i32, HANDLE) -> HANDLE;
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 8B C4 48 89 58 08 48 89 70 10 4C";
@@ -33,7 +34,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 cri_loader_register_file_hook
             );
         } else {
-            return Err(format!("Could not find pattern for CriLoaderRegisterFile").into());
+            return Err("Could not find pattern for CriLoaderRegisterFile".into());
         }
     }
 
@@ -55,8 +56,8 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 fn cri_loader_register_file_hook(
     loader: HANDLE,
     binder: HANDLE,
-    path: PSTR,
-    file_id: INT,
+    path: *mut u8,
+    file_id: i32,
     zero: HANDLE,
 ) -> HANDLE {
     debug_print!(
@@ -82,7 +83,7 @@ fn cri_loader_register_file_hook(
         debug_print!("[CriLoaderRegisterFile] redirecting {path_string:?} to {path:?}",);
 
         return unsafe {
-            CriLoader_Register_File.call(loader, binder, path.as_ptr() as PSTR, file_id, zero)
+            CriLoader_Register_File.call(loader, binder, path.as_ptr() as *mut u8, file_id, zero)
         };
     }
 

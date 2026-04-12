@@ -1,5 +1,4 @@
 use retour::static_detour;
-use winapi::shared::minwindef::DWORD;
 
 use crate::{
     cri_hooks::CriError,
@@ -9,12 +8,12 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Unbind: unsafe extern "system" fn(DWORD) -> CriError;
+    static Cri_Binder_Unbind: unsafe extern "system" fn(u32) -> CriError;
 }
 
-type FnCriBinderUnbind = unsafe extern "system" fn(DWORD) -> CriError;
+type FnCriBinderUnbind = unsafe extern "system" fn(u32) -> CriError;
 
-pub fn hook_impl(binder_id: DWORD) -> CriError {
+pub fn hook_impl(binder_id: u32) -> CriError {
     debug_print!("[CriBinderUnbind] binder_id: {binder_id:?}");
 
     unsafe { Cri_Binder_Unbind.call(binder_id) }
@@ -33,7 +32,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             hook!(FnCriBinderUnbind, Cri_Binder_Unbind, addr_usize, hook_impl);
         } else {
-            return Err(format!("Could not find pattern for CriBinderUnbind").into());
+            return Err("Could not find pattern for CriBinderUnbind".into());
         }
     }
 

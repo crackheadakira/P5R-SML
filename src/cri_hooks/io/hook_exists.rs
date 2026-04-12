@@ -1,6 +1,6 @@
 use retour::static_detour;
 use std::ffi::CString;
-use winapi::shared::ntdef::{HANDLE, INT, PSTR};
+use std::os::windows::raw::HANDLE;
 
 use crate::{
     BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
@@ -9,12 +9,12 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Io_Exists: unsafe extern "system" fn(PSTR, *mut INT) -> HANDLE;
+    static Cri_Io_Exists: unsafe extern "system" fn(*mut u8, *mut i32) -> HANDLE;
 }
 
-type FnCriIoExists = unsafe extern "system" fn(PSTR, *mut INT) -> HANDLE;
+type FnCriIoExists = unsafe extern "system" fn(*mut u8, *mut i32) -> HANDLE;
 
-pub fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
+pub fn hook_impl(string_ptr: *mut u8, result: *mut i32) -> HANDLE {
     if string_ptr.is_null() {
         return unsafe { Cri_Io_Exists.call(string_ptr, result) };
     }
@@ -43,7 +43,7 @@ pub fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
             full_path.display()
         );
 
-        return unsafe { Cri_Io_Exists.call(temp_cstr.as_ptr() as PSTR, result) };
+        return unsafe { Cri_Io_Exists.call(temp_cstr.as_ptr() as *mut u8, result) };
     }
 
     unsafe { Cri_Io_Exists.call(string_ptr, result) }
@@ -62,7 +62,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             hook!(FnCriIoExists, Cri_Io_Exists, addr_usize, hook_impl);
         } else {
-            return Err(format!("Could not find pattern for CriIoExists").into());
+            return Err("Could not find pattern for CriIoExists".into());
         }
     }
 

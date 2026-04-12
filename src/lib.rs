@@ -6,11 +6,13 @@ use crate::utils::logging::{debug_print, error_message_box};
 use crate::utils::{RawAllocator, SafeHandle, get_base_dir};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void};
 use std::sync::Mutex;
-use winapi::shared::minwindef::{BOOL, DWORD, FALSE, HINSTANCE, LPVOID, TRUE};
-use winapi::um::processthreadsapi::GetCurrentProcessId;
-use winapi::um::winnt::DLL_PROCESS_ATTACH;
+use windows::Win32::Foundation::HINSTANCE;
+use windows::Win32::System::LibraryLoader::{DisableThreadLibraryCalls, GetModuleHandleA};
+use windows::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
+use windows::Win32::System::Threading::GetCurrentProcessId;
+use windows::core::{BOOL, PCSTR, PSTR};
 
 mod bindings;
 mod cri_hooks;
@@ -28,13 +30,9 @@ pub enum TargetGame {
 }
 
 pub static CURRENT_GAME: Lazy<TargetGame> = Lazy::new(|| unsafe {
-    if winapi::um::libloaderapi::GetModuleHandleA(b"P5R.exe\0".as_ptr() as *const i8)
-        != std::ptr::null_mut()
-    {
+    if GetModuleHandleA(PCSTR(c"P5R.exe".as_ptr() as *const u8)).is_ok() {
         TargetGame::P5R
-    } else if winapi::um::libloaderapi::GetModuleHandleA(b"P4G.exe\0".as_ptr() as *const i8)
-        != std::ptr::null_mut()
-    {
+    } else if GetModuleHandleA(PCSTR(c"P4G.exe".as_ptr() as *const u8)).is_ok() {
         TargetGame::P4G
     } else {
         TargetGame::Unknown
@@ -106,17 +104,18 @@ pub fn initialize_dynamic_hooks() -> Result<(), Box<dyn std::error::Error>> {
 #[unsafe(no_mangle)]
 pub unsafe extern "system" fn DllMain(
     _hinst_dll: HINSTANCE,
-    fdw_reason: DWORD,
-    _lpv_reserved: LPVOID,
+    fdw_reason: u32,
+    _lpv_reserved: *const c_void,
 ) -> BOOL {
     if fdw_reason == DLL_PROCESS_ATTACH {
-        unsafe {
-            winapi::um::libloaderapi::DisableThreadLibraryCalls(_hinst_dll);
+        if let Err(e) = unsafe { DisableThreadLibraryCalls(_hinst_dll.into()) } {
+            error_message_box(&format!("Hook Error: {e}"), "P5R SML");
+            return false.into();
         }
 
         if let Err(e) = install_hooks() {
             error_message_box(&format!("Hook Error: {e}"), "P5R SML");
-            return FALSE;
+            return false.into();
         }
 
         std::thread::spawn(|| {
@@ -126,7 +125,7 @@ pub unsafe extern "system" fn DllMain(
         });
     }
 
-    TRUE
+    true.into()
 }
 
 fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
@@ -212,12 +211,47 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub unsafe fn pstr_to_string(pstr: *const i8) -> String {
-    if pstr.is_null() {
+pub trait AsRawI8Ptr {
+    fn as_raw_i8_ptr(&self) -> *const i8;
+}
+
+impl AsRawI8Ptr for PSTR {
+    fn as_raw_i8_ptr(&self) -> *const i8 {
+        self.as_ptr() as _
+    }
+}
+
+impl AsRawI8Ptr for PCSTR {
+    fn as_raw_i8_ptr(&self) -> *const i8 {
+        self.as_ptr() as _
+    }
+}
+
+impl AsRawI8Ptr for *const i8 {
+    fn as_raw_i8_ptr(&self) -> *const i8 {
+        *self
+    }
+}
+
+impl AsRawI8Ptr for *mut i8 {
+    fn as_raw_i8_ptr(&self) -> *const i8 {
+        *self as _
+    }
+}
+
+impl AsRawI8Ptr for *mut u8 {
+    fn as_raw_i8_ptr(&self) -> *const i8 {
+        *self as _
+    }
+}
+
+pub unsafe fn pstr_to_string<T: AsRawI8Ptr>(ptr: T) -> String {
+    let raw_ptr = ptr.as_raw_i8_ptr();
+    if raw_ptr.is_null() {
         return String::new();
     }
-    let cstr = unsafe { CStr::from_ptr(pstr) };
-    cstr.to_string_lossy().into_owned()
+
+    unsafe { CStr::from_ptr(raw_ptr).to_string_lossy().into_owned() }
 }
 
 pub fn lock_or_log<'a, T>(mutex: &'a Mutex<T>, context: &str) -> std::sync::MutexGuard<'a, T> {

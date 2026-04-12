@@ -1,10 +1,10 @@
 use std::collections::HashMap;
+use std::os::windows::raw::HANDLE;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use once_cell::sync::Lazy;
 use retour::static_detour;
-use winapi::shared::ntdef::HANDLE;
 
 use crate::scanner::{parse_pattern, scan_main_module};
 use crate::vfs::apply_vfs_patches;
@@ -60,11 +60,11 @@ pub unsafe extern "system" fn intercepted_callback(userdata: usize, loader: HAND
 
     unsafe { apply_vfs_patches(loader, userdata) };
 
-    if let Some(cb) = orig_cb {
-        if cb != 0 {
-            let cb_fn: FnCompletionCallback = unsafe { std::mem::transmute(cb) };
-            unsafe { cb_fn(userdata, loader) };
-        }
+    if let Some(cb) = orig_cb
+        && cb != 0
+    {
+        let cb_fn: FnCompletionCallback = unsafe { std::mem::transmute(cb) };
+        unsafe { cb_fn(userdata, loader) };
     }
 }
 
@@ -146,7 +146,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             hook!(FnCriLoaderTick, Cri_Loader_Tick, addr_usize, hook_impl);
         } else {
-            return Err(format!("Could not find pattern for CriIoLoaderTick").into());
+            return Err("Could not find pattern for CriIoLoaderTick".into());
         }
     }
 

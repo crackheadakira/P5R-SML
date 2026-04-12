@@ -1,9 +1,5 @@
 use retour::static_detour;
-use std::ffi::CString;
-use winapi::shared::{
-    minwindef::DWORD,
-    ntdef::{HANDLE, INT, PSTR},
-};
+use std::{ffi::CString, os::windows::raw::HANDLE};
 
 use crate::{
     BINDER_COLLECTION, SafeHandle,
@@ -14,19 +10,19 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Bind_Files: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    static Cri_Binder_Bind_Files: unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, HANDLE, i32, *mut u32) -> CriError;
 }
 
 type FnCriBinderBindFiles =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, HANDLE, i32, *mut u32) -> CriError;
 
 pub fn hook_impl(
     binder_handle: HANDLE,
     src_binder_handle: HANDLE,
-    path: PSTR,
+    path: *mut u8,
     work: HANDLE,
-    work_size: INT,
-    binder_id: *mut DWORD,
+    work_size: i32,
+    binder_id: *mut u32,
 ) -> CriError {
     let path_str = unsafe { pstr_to_string(path) };
 
@@ -92,7 +88,7 @@ pub fn hook_impl(
             Cri_Binder_Bind_Files.call(
                 binder_handle,
                 src_binder_handle,
-                new_cstr.as_ptr() as PSTR,
+                new_cstr.as_ptr() as *mut u8,
                 work,
                 work_size,
                 binder_id,
@@ -131,7 +127,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 hook_impl
             );
         } else {
-            return Err(format!("Could not find pattern for CriBinderBindFiles").into());
+            return Err("Could not find pattern for CriBinderBindFiles".into());
         }
     }
 

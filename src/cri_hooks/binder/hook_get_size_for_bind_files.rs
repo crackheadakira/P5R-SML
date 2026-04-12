@@ -5,18 +5,19 @@ use crate::{
     utils::logging::debug_print,
 };
 use retour::static_detour;
-use winapi::shared::ntdef::{HANDLE, INT, PSTR};
+use std::os::windows::raw::HANDLE;
 
 static_detour! {
-    static Cri_Binder_Get_Size_For_Bind_Files: unsafe extern "system" fn(HANDLE, PSTR, *mut INT) -> CriError;
+    static Cri_Binder_Get_Size_For_Bind_Files: unsafe extern "system" fn(HANDLE, *mut u8, *mut i32) -> CriError;
 }
 
-type FnCriBinderGetSizeForBindFiles = unsafe extern "system" fn(HANDLE, PSTR, *mut INT) -> CriError;
+type FnCriBinderGetSizeForBindFiles =
+    unsafe extern "system" fn(HANDLE, *mut u8, *mut i32) -> CriError;
 
 pub fn cri_binder_get_size_for_bind_files_hook(
     src_binder_handle: HANDLE,
-    path: PSTR,
-    work_size: *mut INT,
+    path: *mut u8,
+    work_size: *mut i32,
 ) -> CriError {
     let status =
         unsafe { Cri_Binder_Get_Size_For_Bind_Files.call(src_binder_handle, path, work_size) };
@@ -51,7 +52,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 cri_binder_get_size_for_bind_files_hook
             );
         } else {
-            return Err(format!("Could not find pattern for CriBinderGetSizeForBindFiles").into());
+            return Err("Could not find pattern for CriBinderGetSizeForBindFiles".into());
         }
     }
 

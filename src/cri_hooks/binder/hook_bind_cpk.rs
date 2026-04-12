@@ -1,14 +1,11 @@
 use std::{
     collections::HashSet,
     ffi::CString,
+    os::windows::raw::HANDLE,
     sync::{Arc, Mutex},
 };
 
 use retour::static_detour;
-use winapi::shared::{
-    minwindef::DWORD,
-    ntdef::{HANDLE, INT, PSTR},
-};
 
 use crate::{
     BINDER_COLLECTION, CpkBinding,
@@ -20,19 +17,19 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Bind_Cpk: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    static Cri_Binder_Bind_Cpk: unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, HANDLE, i32, *mut u32) -> CriError;
 }
 
 type FnCriBinderBindCpk =
-    unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
+    unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, HANDLE, i32, *mut u32) -> CriError;
 
 pub fn cri_binder_bind_cpk_hook(
     binder_handle: HANDLE,
     src_binder_handle: HANDLE,
-    path: PSTR,
+    path: *mut u8,
     work: HANDLE,
-    work_size: INT,
-    binder_id: *mut DWORD,
+    work_size: i32,
+    binder_id: *mut u32,
 ) -> CriError {
     debug_print!(
         "[CriBinderBindCpk] binder_handle: {binder_handle:?}, src_binder_handle: {src_binder_handle:?}, path: {}, work: {work:?}, work_size: {work_size}",
@@ -91,7 +88,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
 
     let status = super::hook_get_size_for_bind_files::cri_binder_get_size_for_bind_files_hook(
         binder_handle,
-        file_list_str.as_ptr() as PSTR,
+        file_list_str.as_ptr() as *mut u8,
         &mut size,
     );
 
@@ -115,7 +112,7 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     let status = super::hook_bind_files::hook_impl(
         binder_handle,
         std::ptr::null_mut(),
-        file_list_str.as_ptr() as PSTR,
+        file_list_str.as_ptr() as *mut u8,
         alloc.as_ptr().0,
         size,
         &mut binder_id,
@@ -235,7 +232,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 cri_binder_bind_cpk_hook
             );
         } else {
-            return Err(format!("Could not find pattern for CriBinderBindCpk").into());
+            return Err("Could not find pattern for CriBinderBindCpk".into());
         }
     }
 

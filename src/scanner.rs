@@ -76,10 +76,10 @@ pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
 #[inline(always)]
 fn is_match(data: &[u8], pattern: &[Option<u8>]) -> bool {
     for (i, &sig_byte) in pattern.iter().enumerate() {
-        if let Some(b) = sig_byte {
-            if data[i] != b {
-                return false;
-            }
+        if let Some(b) = sig_byte
+            && data[i] != b
+        {
+            return false;
         }
     }
     true

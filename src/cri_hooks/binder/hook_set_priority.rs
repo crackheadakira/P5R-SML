@@ -1,5 +1,4 @@
 use retour::static_detour;
-use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
 use crate::{
     cri_hooks::CriError,
@@ -9,11 +8,11 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Binder_Set_Priority: unsafe extern "system" fn(DWORD, INT) -> CriError;
+    static Cri_Binder_Set_Priority: unsafe extern "system" fn(u32, i32) -> CriError;
 }
-type FnCriBinderSetPriority = unsafe extern "system" fn(DWORD, INT) -> CriError;
+type FnCriBinderSetPriority = unsafe extern "system" fn(u32, i32) -> CriError;
 
-pub fn hook_impl(binder_id: DWORD, priority: INT) -> CriError {
+pub fn hook_impl(binder_id: u32, priority: i32) -> CriError {
     debug_print!("[CriBinderSetPriority] binder_id: {binder_id}, priority: {priority}");
     unsafe { Cri_Binder_Set_Priority.call(binder_id, priority) }
 }
@@ -36,7 +35,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
                 hook_impl
             );
         } else {
-            return Err(format!("Could not find pattern for CriBinderSetPriority").into());
+            return Err("Could not find pattern for CriBinderSetPriority".into());
         }
     }
 

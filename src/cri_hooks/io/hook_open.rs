@@ -1,6 +1,6 @@
 use retour::static_detour;
 use std::ffi::CString;
-use winapi::shared::ntdef::{HANDLE, INT, PSTR};
+use std::os::windows::raw::HANDLE;
 
 use crate::{
     BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
@@ -9,15 +9,15 @@ use crate::{
 };
 
 static_detour! {
-    static Cri_Io_Open: unsafe extern "system" fn(PSTR, INT, INT, *mut HANDLE) -> HANDLE;
+    static Cri_Io_Open: unsafe extern "system" fn(*mut u8, i32, i32, *mut HANDLE) -> HANDLE;
 }
 
-type FnCriIoOpen = unsafe extern "system" fn(PSTR, INT, INT, *mut HANDLE) -> HANDLE;
+type FnCriIoOpen = unsafe extern "system" fn(*mut u8, i32, i32, *mut HANDLE) -> HANDLE;
 
 pub fn hook_impl(
-    string_ptr: PSTR,
-    file_creation_type: INT,
-    desired_access: INT,
+    string_ptr: *mut u8,
+    file_creation_type: i32,
+    desired_access: i32,
     result: *mut HANDLE,
 ) -> HANDLE {
     if string_ptr.is_null() {
@@ -50,7 +50,7 @@ pub fn hook_impl(
 
         let status = unsafe {
             Cri_Io_Open.call(
-                temp_cstr.as_ptr() as PSTR,
+                temp_cstr.as_ptr() as *mut u8,
                 file_creation_type,
                 desired_access,
                 result,
@@ -78,7 +78,7 @@ pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
 
             hook!(FnCriIoOpen, Cri_Io_Open, addr_usize, hook_impl);
         } else {
-            return Err(format!("Could not find pattern for CriIoOpen").into());
+            return Err("Could not find pattern for CriIoOpen".into());
         }
     }
 
