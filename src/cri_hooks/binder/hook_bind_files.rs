@@ -6,11 +6,12 @@ use winapi::shared::{
 };
 
 use crate::{
-    BINDER_COLLECTION, SafeHandle, cri_hooks::CriError, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION, SafeHandle,
+    cri_hooks::CriError,
+    hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
     utils::logging::debug_print,
 };
-
-const CRI_BINDER_BIND_FILES_ADDR: usize = 0x140460b98;
 
 static_detour! {
     static Cri_Binder_Bind_Files: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
@@ -112,13 +113,26 @@ pub fn hook_impl(
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern =
+        "48 83 EC 48 48 8B 44 24 78 48 89 44 24 30 8B 44 24 70 89 44 24 28 4C 89 4C 24 20 41 83";
+
     unsafe {
-        hook!(
-            FnCriBinderBindFiles,
-            Cri_Binder_Bind_Files,
-            CRI_BINDER_BIND_FILES_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderBindFiles at {:#x}", addr_usize);
+
+            hook!(
+                FnCriBinderBindFiles,
+                Cri_Binder_Bind_Files,
+                addr_usize,
+                hook_impl
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriBinderBindFiles").into());
+        }
     }
 
     Ok(())

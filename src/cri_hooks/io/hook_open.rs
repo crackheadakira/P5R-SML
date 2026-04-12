@@ -2,9 +2,11 @@ use retour::static_detour;
 use std::ffi::CString;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{BINDER_COLLECTION, hook, lock_or_log, pstr_to_string, utils::logging::debug_print};
-
-const CRI_IO_OPEN_ADDR: usize = 0x14047357c;
+use crate::{
+    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static Cri_Io_Open: unsafe extern "system" fn(PSTR, INT, INT, *mut HANDLE) -> HANDLE;
@@ -63,8 +65,21 @@ pub fn hook_impl(
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern =
+        "48 8B C4 48 89 58 10 48 89 68 18 48 89 70 20 57 41 54 41 55 41 56 41 57 48 83 EC 50";
+
     unsafe {
-        hook!(FnCriIoOpen, Cri_Io_Open, CRI_IO_OPEN_ADDR, hook_impl);
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriIoOpen at {:#x}", addr_usize);
+
+            hook!(FnCriIoOpen, Cri_Io_Open, addr_usize, hook_impl);
+        } else {
+            return Err(format!("Could not find pattern for CriIoOpen").into());
+        }
     }
 
     Ok(())

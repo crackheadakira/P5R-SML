@@ -3,9 +3,11 @@ use std::fmt;
 use retour::static_detour;
 use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
-use crate::{hook, utils::logging::debug_print};
-
-const CRI_BINDER_GET_STATUS: usize = 0x14046260c;
+use crate::{
+    hook,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static Cri_Binder_Get_Status: unsafe extern "system" fn(DWORD, *mut INT) -> CriBinderStatus;
@@ -76,13 +78,25 @@ pub fn hook_impl(binder_id: DWORD, status: *mut INT) -> CriBinderStatus {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 89 5C 24 08 57 48 83 EC 20 48 8B DA 8B F9 85";
+
     unsafe {
-        hook!(
-            FnCriBinderGetStatus,
-            Cri_Binder_Get_Status,
-            CRI_BINDER_GET_STATUS,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderGetStatus at {:#x}", addr_usize);
+
+            hook!(
+                FnCriBinderGetStatus,
+                Cri_Binder_Get_Status,
+                addr_usize,
+                hook_impl
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriBinderGetStatus").into());
+        }
     }
 
     Ok(())

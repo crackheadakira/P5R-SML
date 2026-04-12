@@ -6,11 +6,11 @@ use retour::static_detour;
 use winapi::shared::ntdef::HANDLE;
 
 use crate::pac::PAC_MODS;
+use crate::scanner::{parse_pattern, scan_main_module};
 use crate::spd::SPD_MODS;
 use crate::spd::spd_builder::build_patched_spd;
 use crate::{hook, utils::logging::debug_print};
 
-const CRI_LOADER_TICK_ADDR: usize = 0x140467930;
 const GAME_ALLOC_ADDR: usize = 0x14017bc70;
 
 const USERDATA_SIZE_OFFSET: usize = 0x88;
@@ -220,13 +220,21 @@ fn hook_impl(loader: HANDLE) -> u8 {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 89 5c 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 ec 20 bd 01 00 00 00 48 8b f9 39 69 1c";
+
     unsafe {
-        hook!(
-            FnCriLoaderTick,
-            Cri_Loader_Tick,
-            CRI_LOADER_TICK_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriIoLoaderTick at {:#x}", addr_usize);
+
+            hook!(FnCriLoaderTick, Cri_Loader_Tick, addr_usize, hook_impl);
+        } else {
+            return Err(format!("Could not find pattern for CriIoLoaderTick").into());
+        }
     }
+
     Ok(())
 }

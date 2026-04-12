@@ -67,7 +67,6 @@ pub unsafe fn patch_memory(target_addr: *mut u8, patch_bytes: &[u8]) {
     let mut old_protect = PAGE_PROTECTION_FLAGS(0);
     let size = patch_bytes.len();
 
-    // 1. Unprotect the memory (Make it Read/Write/Execute)
     if unsafe {
         VirtualProtect(
             target_addr as *const c_void,
@@ -77,10 +76,8 @@ pub unsafe fn patch_memory(target_addr: *mut u8, patch_bytes: &[u8]) {
         )
         .is_ok()
     } {
-        // 2. Write our new bytes (e.g., 90 90)
         unsafe { std::ptr::copy_nonoverlapping(patch_bytes.as_ptr(), target_addr, size) };
 
-        // 3. Restore the original memory protection to be safe
         let mut dummy = PAGE_PROTECTION_FLAGS(0);
         let _ =
             unsafe { VirtualProtect(target_addr as *const c_void, size, old_protect, &mut dummy) };

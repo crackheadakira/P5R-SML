@@ -8,7 +8,7 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use std::ffi::CStr;
 use std::sync::Mutex;
-use winapi::shared::minwindef::{BOOL, DWORD, HINSTANCE, LPVOID, TRUE};
+use winapi::shared::minwindef::{BOOL, DWORD, FALSE, HINSTANCE, LPVOID, TRUE};
 use winapi::um::processthreadsapi::GetCurrentProcessId;
 use winapi::um::winnt::DLL_PROCESS_ATTACH;
 
@@ -88,52 +88,41 @@ pub unsafe extern "system" fn DllMain(
     _lpv_reserved: LPVOID,
 ) -> BOOL {
     if fdw_reason == DLL_PROCESS_ATTACH {
-        // 1. Immediately disable thread calls to save performance
         unsafe {
             winapi::um::libloaderapi::DisableThreadLibraryCalls(_hinst_dll);
         }
 
-        // 2. SPAWN A THREAD.
-        // We exit DllMain as fast as possible so the game can continue loading its own DLLs.
+        if let Err(e) = install_hooks() {
+            error_message_box(&format!("Hook Error: {e}"), "P5R SML");
+            return FALSE;
+        }
+
         std::thread::spawn(|| {
             if let Err(e) = initialize_loader() {
-                error_message_box(
-                    &format!("Initialization Error: {e}"),
-                    "P5R Simple Mod Loader",
-                );
+                error_message_box(&format!("Mod Loading Error: {e}"), "P5R SML");
             }
         });
     }
 
-    TRUE // winapi TRUE is just 1
+    TRUE
 }
 
 fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
     let pid = unsafe { GetCurrentProcessId() };
     debug_print!("[P5R SML] version.dll proxy active (PID: {pid})");
 
-    // Install hooks
-    install_hooks()?;
-    debug_print!("[P5R SML] All hooks installed successfully");
-
-    initialize_dynamic_hooks()?;
-
-    // Get mod files
     let base_directory = get_base_dir();
     let mods_directory = base_directory.join("mods");
 
-    // Ensure directory exists
     if !mods_directory.exists() {
         std::fs::create_dir_all(&mods_directory).ok();
     }
 
-    // Load Binders
     {
         let mut binders = lock_or_log(&BINDER_COLLECTION, "DllMain");
         binders.load_mod_folder(&mods_directory);
     }
 
-    // Load SPDs
     if let Ok(entries) = std::fs::read_dir(&mods_directory) {
         for entry in entries.flatten() {
             let mod_path = entry.path();
@@ -193,6 +182,10 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
 
     // spd::hook_spd_load::register_hook()?;
     spd::hook_spd_tick::register_hook()?;
+
+    initialize_dynamic_hooks()?;
+
+    debug_print!("[P5R SML] All hooks installed successfully");
 
     Ok(())
 }

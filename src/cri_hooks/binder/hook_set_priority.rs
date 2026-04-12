@@ -1,9 +1,12 @@
 use retour::static_detour;
 use winapi::shared::{minwindef::DWORD, ntdef::INT};
 
-use crate::{cri_hooks::CriError, hook, utils::logging::debug_print};
-
-const CRI_BINDER_SET_PRIORITY_ADDR: usize = 0x140462f5c;
+use crate::{
+    cri_hooks::CriError,
+    hook,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static Cri_Binder_Set_Priority: unsafe extern "system" fn(DWORD, INT) -> CriError;
@@ -16,13 +19,25 @@ pub fn hook_impl(binder_id: DWORD, priority: INT) -> CriError {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 ?? ?? ?? ?? 48 8B D8 48 85 C0 75 18";
+
     unsafe {
-        hook!(
-            FnCriBinderSetPriority,
-            Cri_Binder_Set_Priority,
-            CRI_BINDER_SET_PRIORITY_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderSetPriority at {:#x}", addr_usize);
+
+            hook!(
+                FnCriBinderSetPriority,
+                Cri_Binder_Set_Priority,
+                addr_usize,
+                hook_impl
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriBinderSetPriority").into());
+        }
     }
 
     Ok(())

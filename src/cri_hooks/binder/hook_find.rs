@@ -3,10 +3,11 @@ use std::ffi::CString;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
 use crate::{
-    BINDER_COLLECTION, cri_hooks::CriError, debug_print, hook, lock_or_log, pstr_to_string,
+    BINDER_COLLECTION,
+    cri_hooks::CriError,
+    debug_print, hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
 };
-
-const CRI_BINDER_FIND_ADDR: usize = 0x140461268;
 
 static_detour! {
     static Cri_Binder_Find: unsafe extern "system" fn(HANDLE, PSTR, *mut CriFsBinderFileInfo, *mut INT) -> CriError;
@@ -88,13 +89,21 @@ pub fn hook_impl(
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern =
+        "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 57 48 83 EC 40 49 8B F9 49 8B D8 48";
+
     unsafe {
-        hook!(
-            FnCriBinderFind,
-            Cri_Binder_Find,
-            CRI_BINDER_FIND_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderFind at {:#x}", addr_usize);
+
+            hook!(FnCriBinderFind, Cri_Binder_Find, addr_usize, hook_impl);
+        } else {
+            return Err(format!("Could not find pattern for CriBinderFind").into());
+        }
     }
 
     Ok(())

@@ -9,10 +9,9 @@ use crate::{
     BINDER_COLLECTION,
     cri_hooks::CriError,
     hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
     utils::{SafeHandle, logging::debug_print},
 };
-
-const CRI_BINDER_BIND_FILE_ADDR: usize = 0x140460b6c;
 
 static_detour! {
     static Cri_Binder_Bind_File: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, HANDLE, INT, *mut DWORD) -> CriError;
@@ -113,13 +112,26 @@ pub fn hook_impl(
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern =
+        "48 83 EC 48 48 8B 44 24 78 48 89 44 24 30 8B 44 24 70 89 44 24 28 4C 89 4C 24 20 41 B9";
+
     unsafe {
-        hook!(
-            FnCriBinderBindFile,
-            Cri_Binder_Bind_File,
-            CRI_BINDER_BIND_FILE_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderBindFile at {:#x}", addr_usize);
+
+            hook!(
+                FnCriBinderBindFile,
+                Cri_Binder_Bind_File,
+                addr_usize,
+                hook_impl
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriBinderBindFile").into());
+        }
     }
 
     Ok(())

@@ -1,9 +1,12 @@
 use retour::static_detour;
 use winapi::shared::minwindef::DWORD;
 
-use crate::{cri_hooks::CriError, hook, utils::logging::debug_print};
-
-const CRI_UNBIND_ADDR: usize = 0x14046315c;
+use crate::{
+    cri_hooks::CriError,
+    hook,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static Cri_Binder_Unbind: unsafe extern "system" fn(DWORD) -> CriError;
@@ -18,13 +21,20 @@ pub fn hook_impl(binder_id: DWORD) -> CriError {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 89 5C 24 08 57 48 83 EC 20 8B F9 E8 ?? ?? ?? ?? 48 8B D8";
+
     unsafe {
-        hook!(
-            FnCriBinderUnbind,
-            Cri_Binder_Unbind,
-            CRI_UNBIND_ADDR,
-            hook_impl
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriBinderUnbind at {:#x}", addr_usize);
+
+            hook!(FnCriBinderUnbind, Cri_Binder_Unbind, addr_usize, hook_impl);
+        } else {
+            return Err(format!("Could not find pattern for CriBinderUnbind").into());
+        }
     }
 
     Ok(())

@@ -1,9 +1,11 @@
 use retour::static_detour;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{BINDER_COLLECTION, hook, lock_or_log, pstr_to_string, utils::logging::debug_print};
-
-const CRI_LOADER_REGISTER_FILE_ADDR: usize = 0x1404674e4;
+use crate::{
+    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static CriLoader_Register_File: unsafe extern "system" fn(HANDLE, HANDLE, PSTR, INT, HANDLE) -> HANDLE;
@@ -13,13 +15,25 @@ type FnCriLoaderRegisterFile =
     unsafe extern "system" fn(HANDLE, HANDLE, PSTR, INT, HANDLE) -> HANDLE;
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 8B C4 48 89 58 08 48 89 70 10 4C";
+
     unsafe {
-        hook!(
-            FnCriLoaderRegisterFile,
-            CriLoader_Register_File,
-            CRI_LOADER_REGISTER_FILE_ADDR,
-            cri_loader_register_file_hook
-        );
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriLoaderRegisterFile at {:#x}", addr_usize);
+
+            hook!(
+                FnCriLoaderRegisterFile,
+                CriLoader_Register_File,
+                addr_usize,
+                cri_loader_register_file_hook
+            );
+        } else {
+            return Err(format!("Could not find pattern for CriLoaderRegisterFile").into());
+        }
     }
 
     Ok(())

@@ -2,9 +2,11 @@ use retour::static_detour;
 use std::ffi::CString;
 use winapi::shared::ntdef::{HANDLE, INT, PSTR};
 
-use crate::{BINDER_COLLECTION, hook, lock_or_log, pstr_to_string, utils::logging::debug_print};
-
-const CRI_IO_EXISTS_ADDR: usize = 0x140473384;
+use crate::{
+    BINDER_COLLECTION, hook, lock_or_log, pstr_to_string,
+    scanner::{parse_pattern, scan_main_module},
+    utils::logging::debug_print,
+};
 
 static_detour! {
     static Cri_Io_Exists: unsafe extern "system" fn(PSTR, *mut INT) -> HANDLE;
@@ -48,8 +50,20 @@ pub fn hook_impl(string_ptr: PSTR, result: *mut INT) -> HANDLE {
 }
 
 pub fn register_hook() -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = "48 89 5C 24 18 57 48 81 EC 70 08";
+
     unsafe {
-        hook!(FnCriIoExists, Cri_Io_Exists, CRI_IO_EXISTS_ADDR, hook_impl);
+        let parsed = parse_pattern(pattern);
+
+        if let Some(address) = scan_main_module(&parsed) {
+            let addr_usize = address as usize;
+
+            debug_print!("[SCANNER] Found CriIoExists at {:#x}", addr_usize);
+
+            hook!(FnCriIoExists, Cri_Io_Exists, addr_usize, hook_impl);
+        } else {
+            return Err(format!("Could not find pattern for CriIoExists").into());
+        }
     }
 
     Ok(())
