@@ -11,8 +11,6 @@ use windows::{
     core::PCWSTR,
 };
 
-use crate::debug_print;
-
 pub fn get_base_dir() -> PathBuf {
     env::current_exe()
         .ok()
@@ -21,16 +19,23 @@ pub fn get_base_dir() -> PathBuf {
 }
 
 #[macro_export]
-macro_rules! _debug_print_impl {
-        ($($arg:tt)*) => {
-            #[cfg(debug_assertions)]
+#[cfg(debug_assertions)]
+macro_rules! debug_print {
+    ($($arg:tt)*) => {
             {
                 $crate::utils::_debug_print_internal(&format!($($arg)*));
             }
         };
     }
 
-#[cfg(debug_assertions)]
+#[macro_export]
+#[cfg(not(debug_assertions))]
+macro_rules! debug_print {
+    ($($arg:tt)*) => {
+        ()
+    };
+}
+
 pub fn _debug_print_internal(msg: &str) {
     let wide: Vec<u16> = std::ffi::OsStr::new(msg)
         .encode_wide()
@@ -103,7 +108,7 @@ pub fn lock_or_log<'a, T>(mutex: &'a Mutex<T>, context: &str) -> std::sync::Mute
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
-            debug_print!("[MUTEX POISONED] {context} mutex was poisoned");
+            crate::debug_print!("[MUTEX POISONED] {context} mutex was poisoned");
             poisoned.into_inner()
         }
     }

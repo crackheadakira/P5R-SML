@@ -24,8 +24,6 @@ mod scanner;
 mod utils;
 mod vfs;
 
-pub use crate::_debug_print_impl as debug_print;
-
 /// # Safety
 /// This is the main entry of the .DLL file
 #[unsafe(no_mangle)]
