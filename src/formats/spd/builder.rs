@@ -190,7 +190,7 @@ fn parse_sprite_ids(s: &str) -> Vec<i32> {
 /// and appends new textures when patching shared atlases to prevent corruption.
 ///
 /// Untouched texture blobs are borrowed directly from `original` (no copy.)
-pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFile) -> Option<Vec<u8>> {
+pub fn build_patched_spd(original: &[u8], mod_files: &SpdModFile) -> Option<Vec<u8>> {
     let (tex_count, spr_count, tex_offset, spr_offset) = parse_header(original)?;
 
     let mut textures = parse_texture_entries(original, tex_count, tex_offset);
@@ -307,7 +307,7 @@ pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFile) -> Opti
             continue;
         }
 
-        let target_set: HashSet<i32> = target_ids.iter().copied().collect();
+        let target_set: HashSet<i32> = target_ids.iter().collect();
 
         let affected_tex_ids: HashSet<i32> = target_ids
             .iter()
@@ -329,11 +329,9 @@ pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFile) -> Opti
                     textures[ti].set_width(dds_w);
                     textures[ti].set_height(dds_h);
                 }
-                blobs.insert(tex_id, Blob::Owned(dds.clone()));
+                blobs.insert(tex_id, Blob::Owned(dds));
                 debug_print!("[SPD] Overwrote texture ID {tex_id} (no shared atlas conflict)");
             }
-            // If only one affected texture, we cloned once unnecessarily, fix by
-            // re-inserting the move. Small SPD texture counts make this negligible.
         } else {
             let new_raw = [0u8; TEXTURE_ENTRY_SIZE];
             let new_entry_tmp = TextureEntry { raw: new_raw };
@@ -371,7 +369,7 @@ pub fn build_patched_spd<'a>(original: &'a [u8], mod_files: &SpdModFile) -> Opti
         .sum();
 
     let total_size = blobs_start + total_blob_size;
-    let mut out = Vec::with_capacity(total_size);
+    let mut out = vec![0u8; total_size];
 
     out.extend_from_slice(&original[..HEADER_SIZE]);
     out[0x08..0x10].copy_from_slice(&(total_size as i64).to_le_bytes());

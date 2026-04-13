@@ -257,9 +257,8 @@ pub fn build_patched_pac(original: &[u8], mod_files: &PacModFiles) -> Option<Vec
     }
 
     for (i, entry) in entries.iter().enumerate() {
-        let is_modded = new_blobs.contains_key(&i);
-        let blob_data = if is_modded {
-            new_blobs.get(&i).unwrap().as_slice()
+        let blob_data = if let Some(vec) = new_blobs.get(&i) {
+            vec.as_slice()
         } else {
             let end = entry.original_offset + entry.original_size;
             &original[entry.original_offset..end.min(original.len())]
