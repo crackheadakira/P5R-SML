@@ -4,7 +4,6 @@ use std::os::windows::raw::HANDLE;
 
 use crate::{
     BINDER_COLLECTION, debug_print, hook,
-    scanner::{parse_pattern, scan_main_module},
     utils::{lock_or_log, pstr_to_string},
 };
 
@@ -64,14 +63,14 @@ pub fn cri_io_open_hook(
     unsafe { Cri_Io_Open.call(string_ptr, file_creation_type, desired_access, result) }
 }
 
-pub fn register_io_open_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_io_open_hook(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let pattern =
         "48 8B C4 48 89 58 10 48 89 68 18 48 89 70 20 57 41 54 41 55 41 56 41 57 48 83 EC 50";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriIoOpen at {:#x}", addr_usize);

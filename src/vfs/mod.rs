@@ -38,7 +38,7 @@ pub static CURRENT_GAME: Lazy<TargetGame> = Lazy::new(|| unsafe {
 pub static BINDER_COLLECTION: Lazy<Mutex<BinderCollection>> =
     Lazy::new(|| Mutex::new(BinderCollection::new()));
 
-unsafe extern "C" {
+unsafe extern "system" {
     fn _aligned_malloc(size: usize, alignment: usize) -> *mut u8;
 }
 

@@ -1,10 +1,6 @@
 use retour::static_detour;
 
-use crate::{
-    debug_print, hook,
-    hooks::CriError,
-    scanner::{parse_pattern, scan_main_module},
-};
+use crate::{debug_print, hook, hooks::CriError};
 
 static_detour! {
     static Cri_Binder_Set_Priority: unsafe extern "system" fn(u32, i32) -> CriError;
@@ -16,13 +12,13 @@ pub fn cri_binder_set_priority_hook(binder_id: u32, priority: i32) -> CriError {
     unsafe { Cri_Binder_Set_Priority.call(binder_id, priority) }
 }
 
-pub fn register_set_priority_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_set_priority_hook(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 08 57 48 83 EC 20 8B FA E8 ?? ?? ?? ?? 48 8B D8 48 85 C0 75 18";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriBinderSetPriority at {:#x}", addr_usize);

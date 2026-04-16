@@ -9,21 +9,66 @@ use windows::Win32::System::Threading::GetCurrentProcess;
 
 use crate::debug_print;
 
-/// Converts "E8 ?? ?? 48" into [Some(0xE8), None, None, Some(0x48)]
-pub fn parse_pattern(signature: &str) -> Vec<Option<u8>> {
-    signature
-        .split_whitespace()
-        .map(|byte_str| {
-            if byte_str == "??" || byte_str == "?" {
-                None
-            } else {
-                u8::from_str_radix(byte_str, 16).ok()
-            }
-        })
-        .collect()
+pub struct Signature {
+    pub pattern: Vec<u8>,
+    pub mask: Vec<bool>,
+    pub first_byte_idx: usize,
+    pub first_byte_val: u8,
 }
 
-pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
+impl Signature {
+    pub fn parse(signature: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut pattern = Vec::new();
+        let mut mask = Vec::new();
+
+        for byte_str in signature.split_whitespace() {
+            if byte_str == "??" || byte_str == "?" {
+                pattern.push(0);
+                mask.push(false);
+            } else {
+                pattern.push(u8::from_str_radix(byte_str, 16).unwrap_or(0));
+                mask.push(true);
+            }
+        }
+
+        let mut first_byte_idx = 0;
+        let mut first_byte_val = 0;
+        let mut found = false;
+
+        for i in 0..pattern.len() {
+            if mask[i] {
+                first_byte_idx = i;
+                first_byte_val = pattern[i];
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            debug_print!("[SCANNER] Signature contains only wildcards");
+            return Err("[SCANNER] Signature contains only wildcards".into());
+        }
+
+        Ok(Self {
+            pattern,
+            mask,
+            first_byte_idx,
+            first_byte_val,
+        })
+    }
+}
+
+#[inline(always)]
+fn is_match(data: &[u8], pattern: &[u8], mask: &[bool]) -> bool {
+    for i in 0..pattern.len() {
+        if mask[i] && data[i] != pattern[i] {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn get_main_module_memory() -> Option<&'static [u8]> {
     let module = unsafe { GetModuleHandleW(None).ok() }?;
     let mut module_info = MODULEINFO::default();
     let process = unsafe { GetCurrentProcess() };
@@ -40,28 +85,43 @@ pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
 
     let base_addr = module_info.lpBaseOfDll as *const u8;
     let size = module_info.SizeOfImage as usize;
-    let memory_slice = unsafe { std::slice::from_raw_parts(base_addr, size) };
 
-    // OPTIMIZATION 1: Extract the first byte to search for
-    let (first_byte_idx, first_byte_val) = pattern
-        .iter()
-        .enumerate()
-        .find_map(|(i, &b)| b.map(|val| (i, val)))?;
+    Some(unsafe { std::slice::from_raw_parts(base_addr, size) })
+}
 
+pub unsafe fn scan_memory(memory: &[u8], signature: &Signature) -> Option<*mut u8> {
+    let size = memory.len();
+    let pat_len = signature.pattern.len();
+
+    if size < pat_len {
+        return None;
+    }
+
+    let search_limit = size - pat_len;
     let mut current_pos = 0;
-    let search_limit = size - pattern.len();
 
     while current_pos <= search_limit {
-        let remaining_mem = &memory_slice[current_pos..];
-        if let Some(hit) = remaining_mem.iter().position(|&b| b == first_byte_val) {
-            let start_index = current_pos + hit - first_byte_idx;
+        let remaining_mem = &memory[current_pos..];
 
-            if start_index + pattern.len() > size {
+        if let Some(hit) = remaining_mem
+            .iter()
+            .position(|&b| b == signature.first_byte_val)
+        {
+            let start_index = current_pos + hit;
+
+            if start_index < signature.first_byte_idx {
+                current_pos += hit + 1;
+                continue;
+            }
+
+            let match_start = start_index - signature.first_byte_idx;
+
+            if match_start + pat_len > size {
                 break;
             }
 
-            if is_match(&memory_slice[start_index..], pattern) {
-                return Some(unsafe { base_addr.add(start_index) } as *mut u8);
+            if is_match(&memory[match_start..], &signature.pattern, &signature.mask) {
+                return Some(unsafe { memory.as_ptr().add(match_start) } as *mut u8);
             }
 
             current_pos += hit + 1;
@@ -71,18 +131,6 @@ pub unsafe fn scan_main_module(pattern: &[Option<u8>]) -> Option<*mut u8> {
     }
 
     None
-}
-
-#[inline(always)]
-fn is_match(data: &[u8], pattern: &[Option<u8>]) -> bool {
-    for (i, &sig_byte) in pattern.iter().enumerate() {
-        if let Some(b) = sig_byte
-            && data[i] != b
-        {
-            return false;
-        }
-    }
-    true
 }
 
 pub unsafe fn patch_memory(target_addr: *mut u8, patch_bytes: &[u8]) {
@@ -104,15 +152,8 @@ pub unsafe fn patch_memory(target_addr: *mut u8, patch_bytes: &[u8]) {
         let _ =
             unsafe { VirtualProtect(target_addr as *const c_void, size, old_protect, &mut dummy) };
 
-        debug_print!(
-            "[SCANNER] Successfully wrote {} bytes at {:?}",
-            size,
-            target_addr
-        );
+        debug_print!("[SCANNER] Successfully wrote {size} bytes at {target_addr:?}");
     } else {
-        debug_print!(
-            "[SCANNER] ERROR: Failed to unprotect memory at {:?}",
-            target_addr
-        );
+        debug_print!("[SCANNER] ERROR: Failed to unprotect memory at {target_addr:?}");
     }
 }

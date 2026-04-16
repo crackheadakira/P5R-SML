@@ -1,9 +1,4 @@
-use crate::{
-    debug_print, hook,
-    hooks::CriError,
-    scanner::{parse_pattern, scan_main_module},
-    utils::pstr_to_string,
-};
+use crate::{debug_print, hook, hooks::CriError, utils::pstr_to_string};
 use retour::static_detour;
 use std::os::windows::raw::HANDLE;
 
@@ -31,13 +26,15 @@ pub fn cri_binder_get_size_for_bind_files_hook(
     status
 }
 
-pub fn register_get_size_for_bind_files_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_get_size_for_bind_files_hook(
+    memory: &'static [u8],
+) -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 89 5C 24 08 48 89 74 24 20 57 48 81 EC 50";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!(

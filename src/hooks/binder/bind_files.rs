@@ -4,7 +4,6 @@ use std::{ffi::CString, os::windows::raw::HANDLE};
 use crate::{
     BINDER_COLLECTION, debug_print, hook,
     hooks::CriError,
-    scanner::{parse_pattern, scan_main_module},
     utils::{lock_or_log, pstr_to_string},
     vfs::SafeHandle,
 };
@@ -108,14 +107,14 @@ pub fn cri_binder_bind_files_hook(
     }
 }
 
-pub fn register_bind_files_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_bind_files_hook(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let pattern =
         "48 83 EC 48 48 8B 44 24 78 48 89 44 24 30 8B 44 24 70 89 44 24 28 4C 89 4C 24 20 41 83";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriBinderBindFiles at {:#x}", addr_usize);

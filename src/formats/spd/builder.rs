@@ -216,7 +216,7 @@ pub fn build_patched_spd(original: &[u8], mod_files: &SpdModFile) -> Option<Vec<
             .push(s.id());
     }
 
-    let mut blobs: HashMap<i32, Blob<'a>> = textures
+    let mut blobs: HashMap<i32, Blob<'_>> = textures
         .iter()
         .filter_map(|t| {
             let off = i32::from_le_bytes(t.raw[8..12].try_into().unwrap()) as usize;
@@ -307,7 +307,7 @@ pub fn build_patched_spd(original: &[u8], mod_files: &SpdModFile) -> Option<Vec<
             continue;
         }
 
-        let target_set: HashSet<i32> = target_ids.iter().collect();
+        let target_set: HashSet<i32> = target_ids.iter().copied().collect();
 
         let affected_tex_ids: HashSet<i32> = target_ids
             .iter()
@@ -329,7 +329,7 @@ pub fn build_patched_spd(original: &[u8], mod_files: &SpdModFile) -> Option<Vec<
                     textures[ti].set_width(dds_w);
                     textures[ti].set_height(dds_h);
                 }
-                blobs.insert(tex_id, Blob::Owned(dds));
+                blobs.insert(tex_id, Blob::Owned(dds.clone()));
                 debug_print!("[SPD] Overwrote texture ID {tex_id} (no shared atlas conflict)");
             }
         } else {

@@ -5,10 +5,7 @@ pub mod loader;
 pub use binder::CriBinderStatus;
 use serde::Deserialize;
 
-use crate::{
-    debug_print,
-    scanner::{parse_pattern, patch_memory, scan_main_module},
-};
+use crate::{debug_print, scanner::patch_memory};
 
 #[macro_export]
 macro_rules! hook {
@@ -83,7 +80,7 @@ struct HookConfig {
     patch_bytes: Option<String>,
 }
 
-pub fn initialize_dynamic_hooks() -> Result<(), Box<dyn std::error::Error>> {
+pub fn initialize_dynamic_hooks(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = crate::utils::get_base_dir();
     let config_path = base_dir.join("SML_Hooks.json");
 
@@ -92,10 +89,10 @@ pub fn initialize_dynamic_hooks() -> Result<(), Box<dyn std::error::Error>> {
     let config: Config = serde_json::from_str(&json_str)?;
 
     for hook_def in config.hooks {
-        let pattern = parse_pattern(&hook_def.pattern);
+        let signature = crate::scanner::Signature::parse(&hook_def.pattern)?;
 
         unsafe {
-            if let Some(found_addr) = scan_main_module(&pattern) {
+            if let Some(found_addr) = crate::scanner::scan_memory(memory, &signature) {
                 let target_addr = found_addr.offset(hook_def.offset);
 
                 debug_print!("[SCANNER] Found {} at {:?}", hook_def.name, target_addr);

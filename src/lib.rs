@@ -85,11 +85,13 @@ fn initialize_loader() -> Result<(), Box<dyn std::error::Error>> {
 
 // Installs the detours
 pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
-    hooks::binder::register_all_binder_hooks()?;
-    hooks::io::register_all_io_hooks()?;
-    hooks::loader::register_all_loader_hooks()?;
+    let memory = scanner::get_main_module_memory().ok_or("Failed to get module memory bounds")?;
 
-    initialize_dynamic_hooks()?;
+    hooks::binder::register_all_binder_hooks(memory)?;
+    hooks::io::register_all_io_hooks(memory)?;
+    hooks::loader::register_all_loader_hooks(memory)?;
+
+    initialize_dynamic_hooks(memory)?;
 
     debug_print!("[P5R SML] All hooks installed successfully");
 

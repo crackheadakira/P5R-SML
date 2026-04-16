@@ -4,7 +4,6 @@ use retour::static_detour;
 
 use crate::{
     BINDER_COLLECTION, debug_print, hook,
-    scanner::{parse_pattern, scan_main_module},
     utils::{lock_or_log, pstr_to_string},
     vfs::ORIGINAL_CALLBACKS,
 };
@@ -16,13 +15,15 @@ static_detour! {
 type FnCriLoaderRegisterFile =
     unsafe extern "system" fn(HANDLE, HANDLE, *mut u8, i32, HANDLE) -> HANDLE;
 
-pub fn register_register_file_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_register_file_hook(
+    memory: &'static [u8],
+) -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 8B C4 48 89 58 08 48 89 70 10 4C";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriLoaderRegisterFile at {:#x}", addr_usize);

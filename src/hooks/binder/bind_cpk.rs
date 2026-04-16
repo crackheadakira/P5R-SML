@@ -9,7 +9,6 @@ use std::{
 use crate::{
     BINDER_COLLECTION, debug_print, hook,
     hooks::{CriBinderStatus, CriError},
-    scanner::{parse_pattern, scan_main_module},
     utils::{lock_or_log, pstr_to_string},
     vfs::{CpkBinding, ModFile, RawAllocator, SafeHandle},
 };
@@ -212,13 +211,13 @@ fn custom_bind_folder(binder_handle: HANDLE, priority: i32) {
     }
 }
 
-pub fn register_bind_cpk_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_bind_cpk_hook(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let pattern = "48 83 EC 48 48 8B 44 24 78 C7 44 24 30 01 00 00 00 48 89 44 24 28 8B";
 
     unsafe {
-        let parsed = parse_pattern(pattern);
+        let signature = crate::scanner::Signature::parse(pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriBinderBindCpk at {:#x}", addr_usize);

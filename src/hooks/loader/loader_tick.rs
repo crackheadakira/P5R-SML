@@ -2,7 +2,6 @@ use retour::static_detour;
 use std::os::windows::raw::HANDLE;
 use std::sync::atomic::Ordering;
 
-use crate::scanner::{parse_pattern, scan_main_module};
 use crate::vfs::{CURRENT_GAME, GAME_ALLOC_PTR, ORIGINAL_CALLBACKS, TargetGame, apply_vfs_patches};
 use crate::{debug_print, hook};
 
@@ -94,13 +93,13 @@ fn cri_loader_tick_hook(loader: HANDLE) -> u8 {
     }
 }
 
-pub fn register_loader_tick_hook() -> Result<(), Box<dyn std::error::Error>> {
+pub fn register_loader_tick_hook(memory: &'static [u8]) -> Result<(), Box<dyn std::error::Error>> {
     let loader_tick_pattern = "48 89 5c 24 ?? 55 56 57 41 54 41 55 41 56 41 57 48 83 ec 20 bd 01 00 00 00 48 8b f9 39 69 1c";
 
     unsafe {
-        let parsed = parse_pattern(loader_tick_pattern);
+        let signature = crate::scanner::Signature::parse(loader_tick_pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found CriIoLoaderTick at {:#x}", addr_usize);
@@ -120,9 +119,9 @@ pub fn register_loader_tick_hook() -> Result<(), Box<dyn std::error::Error>> {
         "48 89 5c 24 ?? 57 48 83 ec 20 ba 10 00 00 00 48 8b f9 e8 ?? ?? ?? ?? 48 8b d8";
 
     unsafe {
-        let parsed = parse_pattern(game_alloc_pattern);
+        let signature = crate::scanner::Signature::parse(game_alloc_pattern)?;
 
-        if let Some(address) = scan_main_module(&parsed) {
+        if let Some(address) = crate::scanner::scan_memory(memory, &signature) {
             let addr_usize = address as usize;
 
             debug_print!("[SCANNER] Found GameAlloc at {:#x}", addr_usize);
