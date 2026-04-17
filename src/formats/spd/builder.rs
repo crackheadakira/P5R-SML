@@ -369,7 +369,7 @@ pub fn build_patched_spd(original: &[u8], mod_files: &SpdModFile) -> Option<Vec<
         .sum();
 
     let total_size = blobs_start + total_blob_size;
-    let mut out = vec![0u8; total_size];
+    let mut out = Vec::with_capacity(total_size);
 
     out.extend_from_slice(&original[..HEADER_SIZE]);
     out[0x08..0x10].copy_from_slice(&(total_size as i64).to_le_bytes());
