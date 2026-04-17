@@ -33,13 +33,8 @@ pub unsafe extern "system" fn DllMain(
     _lpv_reserved: *const c_void,
 ) -> BOOL {
     if fdw_reason == DLL_PROCESS_ATTACH {
-        if let Err(e) = unsafe { DisableThreadLibraryCalls(_hinst_dll.into()) } {
-            error_message_box(&format!("Hook Error: {e}"), "P5R SML");
-            return false.into();
-        }
-
         if let Err(e) = install_hooks() {
-            error_message_box(&format!("Hook Error: {e}"), "P5R SML");
+            error_message_box(&format!("Hook Install Error: {e}"), "P5R SML");
             return false.into();
         }
 
@@ -96,4 +91,41 @@ pub fn install_hooks() -> Result<(), Box<dyn std::error::Error>> {
     debug_print!("[P5R SML] All hooks installed successfully");
 
     Ok(())
+}
+
+#[cfg(target_env = "gnu")]
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn DirectInput8Create(
+    h_inst: *mut c_void,
+    dw_version: u32,
+    riid: *const c_void,
+    out_ptr: *mut *mut c_void,
+    outer: *mut c_void,
+) -> i32 {
+    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
+    use windows::core::PCSTR;
+
+    type FnDirectInput8Create = unsafe extern "system" fn(
+        *mut c_void,
+        u32,
+        *const c_void,
+        *mut *mut c_void,
+        *mut c_void,
+    ) -> i32;
+
+    static REAL_FUNC: std::sync::OnceLock<FnDirectInput8Create> = std::sync::OnceLock::new();
+
+    let func = REAL_FUNC.get_or_init(|| {
+        let system_path = "C:\\Windows\\System32\\dinput8.dll\0";
+        let h_module = unsafe { LoadLibraryA(PCSTR(system_path.as_ptr())) }
+            .expect("Failed to load system dinput8.dll");
+
+        let proc_name = "DirectInput8Create\0";
+        let addr = unsafe { GetProcAddress(h_module, PCSTR(proc_name.as_ptr())) }
+            .expect("Could not find DirectInput8Create in system dinput8.dll");
+
+        unsafe { std::mem::transmute(addr) }
+    });
+
+    unsafe { func(h_inst, dw_version, riid, out_ptr, outer) }
 }

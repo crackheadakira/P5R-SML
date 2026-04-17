@@ -84,7 +84,8 @@ pub fn initialize_dynamic_hooks(memory: &'static [u8]) -> Result<(), Box<dyn std
     let base_dir = crate::utils::get_base_dir();
     let config_path = base_dir.join("SML_Hooks.json");
 
-    let json_str = std::fs::read_to_string(&config_path)?;
+    let json_str = std::fs::read_to_string(&config_path)
+        .expect("Did not find 'SML_Hooks.json' in game root folder.");
 
     let config: Config = serde_json::from_str(&json_str)?;
 
